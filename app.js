@@ -16,9 +16,115 @@ const SAVE_KEY = "eShikaku_save_v1";
 /* ランダム100問の出題対象（修了試験A-1〜B-4） */
 const HUNDRED_CHAPTER_RE = /^修了試験[AB]-[1-4]$/;
 const HUNDRED_RANGE_LABEL = "修了試験A-1〜B-4";
+const HUNDRED_MIN_PER_CHAPTER = 10; // ランダム100問で各章から最低出題する問題数
+
+/* 前問を参照している問題の判定（この問題は直前の問題とセットで出題する） */
+const CONT_RE = /前問|前の設問|前設問|上の設問|前の問題/;
+
+/* 模擬試験100問の章別配分（出題傾向を加味。合計100。ここを編集すれば配分を変更できる） */
+const MOCK_PLAN = {
+  "修了試験A-1": 8,             // 応用数学・機械学習基礎
+  "修了試験A-2": 10,            // 深層学習基礎（順伝播・逆伝播・最適化）
+  "修了試験A-3": 8,             // 正則化・CNN基礎
+  "修了試験A-4": 8,             // RNN・自然言語処理
+  "修了試験B-1": 8,             // 画像認識
+  "修了試験B-2": 6,             // 生成モデル・応用
+  "修了試験B-3": 5,             // 強化学習ほか
+  "修了試験B-4": 5,             // 開発・運用環境
+  "E資格例題2024": 20,          // 最新の例題を厚めに
+  "E資格例題2021": 8,
+  "E資格例題2021(PyTorch)": 3,
+  "E資格例題2020": 5,
+  "E資格例題2018": 6,
+};
+const MOCK_RANGE_LABEL = "模擬試験（全章・傾向配分）";
 
 function getHundredPool() {
   return state.allQuestions.filter(q => HUNDRED_CHAPTER_RE.test(q.chapter));
+}
+
+/* 読み込んだ問題に「前問参照グループ」のIDを振る（CSVの並び順で判定） */
+function assignGroupIds(questions) {
+  let gid = -1;
+  questions.forEach((q, i) => {
+    const prev = questions[i - 1];
+    const isCont = i > 0 && prev.chapter === q.chapter && CONT_RE.test(q.question);
+    if (!isCont) gid += 1;
+    q.groupId = gid;
+  });
+}
+
+/* 問題配列を前問参照グループの配列（各要素はCSV順の問題配列）に変換 */
+function toGroups(pool) {
+  const map = new Map();
+  pool.forEach(q => {
+    if (!map.has(q.groupId)) map.set(q.groupId, []);
+    map.get(q.groupId).push(q);
+  });
+  return [...map.values()];
+}
+
+/**
+ * グループ単位で target 問に達するまで抽選する。
+ * 残り枠に収まるグループを優先し、無ければ最小のグループで最小限だけ超過する。
+ * usedGroupIds に選択済みグループを記録し、重複選択を防ぐ。
+ */
+function drawGroups(groups, target, usedGroupIds, out) {
+  let count = 0;
+  const candidates = shuffle(groups.filter(g => !usedGroupIds.has(g[0].groupId)));
+  while (count < target && candidates.length > 0) {
+    const remain = target - count;
+    let idx = candidates.findIndex(g => g.length <= remain);
+    if (idx === -1) {
+      // 残り枠に収まるグループが無い場合は、超過が最小になるグループを選ぶ
+      idx = candidates.reduce((best, g, i) =>
+        g.length < candidates[best].length ? i : best, 0);
+    }
+    const g = candidates.splice(idx, 1)[0];
+    usedGroupIds.add(g[0].groupId);
+    out.push(g);
+    count += g.length;
+  }
+  return count;
+}
+
+/* ランダム100問：各章最低10問＋残りを全体から補充（前問参照はセットで出題） */
+function buildHundredSet() {
+  const pool = getHundredPool();
+  const used = new Set();
+  const selected = [];
+  let total = 0;
+  const chapters = [...new Set(pool.map(q => q.chapter))];
+  chapters.forEach(ch => {
+    const groups = toGroups(pool.filter(q => q.chapter === ch));
+    total += drawGroups(groups, HUNDRED_MIN_PER_CHAPTER, used, selected);
+  });
+  if (total < 100) {
+    drawGroups(toGroups(pool), 100 - total, used, selected);
+  }
+  return shuffle(selected).flat();
+}
+
+/* 模擬試験100問：MOCK_PLANの章別配分で抽選し、不足分は全章から補充 */
+function buildMockSet() {
+  const used = new Set();
+  const selected = [];
+  let total = 0;
+  Object.entries(MOCK_PLAN).forEach(([ch, quota]) => {
+    const chPool = state.allQuestions.filter(q => q.chapter === ch);
+    if (chPool.length === 0) return; // CSVに存在しない章はスキップ（後で補充される）
+    total += drawGroups(toGroups(chPool), Math.min(quota, chPool.length), used, selected);
+  });
+  if (total < 100) {
+    drawGroups(toGroups(state.allQuestions), 100 - total, used, selected);
+  }
+  return shuffle(selected).flat();
+}
+
+function modeLabelOf(mode) {
+  if (mode === "hundred") return "ランダム100問";
+  if (mode === "mock") return "模擬試験100問";
+  return "1問1答";
 }
 
 /* CSVパーサ（parseCSV / questionsFromCSVText）は csv-lib.js で定義 */
@@ -136,6 +242,9 @@ const el = {
   feedbackExplanation: document.getElementById("feedbackExplanation"),
   submitBtn: document.getElementById("submitBtn"),
   nextBtn: document.getElementById("nextBtn"),
+  prevBtn: document.getElementById("prevBtn"),
+  fwdBtn: document.getElementById("fwdBtn"),
+  reviewingNote: document.getElementById("reviewingNote"),
 
   resultScoreBig: document.getElementById("resultScoreBig"),
   resultPercent: document.getElementById("resultPercent"),
@@ -173,7 +282,7 @@ function renderResumeCard() {
     return;
   }
   const answered = s.records.filter(Boolean).length;
-  const modeLabel = s.mode === "hundred" ? "ランダム100問" : "1問1答";
+  const modeLabel = modeLabelOf(s.mode);
   const timeLabel = s.timeMode === "limited"
     ? "残り " + formatTime(s.remainingSec)
     : "経過 " + formatTime(s.elapsedSec);
@@ -223,6 +332,7 @@ function applyLoadedQuestions(questions, sourceLabel) {
     return;
   }
   state.allQuestions = questions;
+  assignGroupIds(state.allQuestions);
   state.chapters = [...new Set(questions.map(q => q.chapter))];
 
   const skipped = questions.skippedRows || [];
@@ -319,24 +429,33 @@ el.startBtn.addEventListener("click", () => {
   const timeMode = document.querySelector('input[name="timeMode"]:checked').value;
   const timeLimitMin = Math.max(1, parseInt(el.timeLimitInput.value, 10) || 90);
 
-  let pool;
+  let questionSet;
   let rangeLabel;
   if (mode === "hundred") {
-    // ランダム100問は修了試験A-1〜B-4のみを対象とする
-    pool = getHundredPool();
+    if (getHundredPool().length === 0) {
+      alert("修了試験A-1〜B-4の問題が見つかりません。CSVのchapter列をご確認ください。");
+      return;
+    }
+    questionSet = buildHundredSet();
     rangeLabel = HUNDRED_RANGE_LABEL;
+  } else if (mode === "mock") {
+    if (state.allQuestions.length === 0) {
+      alert("問題データが読み込まれていません。");
+      return;
+    }
+    questionSet = buildMockSet();
+    rangeLabel = MOCK_RANGE_LABEL;
   } else {
-    pool = rangeValue === "__ALL__"
+    // 1問1答：CSVの並び順のまま出題
+    const pool = rangeValue === "__ALL__"
       ? state.allQuestions
       : state.allQuestions.filter(q => q.chapter === rangeValue);
+    if (pool.length === 0) {
+      alert("この範囲には問題がありません。");
+      return;
+    }
+    questionSet = pool.slice();
     rangeLabel = rangeValue === "__ALL__" ? "すべての範囲" : rangeValue;
-  }
-
-  if (pool.length === 0) {
-    alert(mode === "hundred"
-      ? "修了試験A-1〜B-4の問題が見つかりません。CSVのchapter列をご確認ください。"
-      : "この範囲には問題がありません。");
-    return;
   }
 
   if (getSavedQuiz()) {
@@ -344,14 +463,6 @@ el.startBtn.addEventListener("click", () => {
       return;
     }
     clearSavedQuiz();
-  }
-
-  let questionSet;
-  if (mode === "hundred") {
-    const n = Math.min(100, pool.length);
-    questionSet = shuffle(pool).slice(0, n);
-  } else {
-    questionSet = shuffle(pool);
   }
 
   startQuiz({
@@ -363,12 +474,17 @@ el.startBtn.addEventListener("click", () => {
   });
 });
 
-/* 回答形式の切替：ランダム100問のときは章選択を無効化して注意書きを表示 */
+/* 回答形式の切替：100問系モードでは章選択を無効化して注意書きを表示 */
 function updateRangeAvailability() {
   const mode = document.querySelector('input[name="mode"]:checked').value;
-  const isHundred = mode === "hundred";
-  el.rangeSelect.disabled = isHundred;
-  el.rangeNote.hidden = !isHundred;
+  const isBatch = mode === "hundred" || mode === "mock";
+  el.rangeSelect.disabled = isBatch;
+  el.rangeNote.hidden = !isBatch;
+  if (isBatch) {
+    el.rangeNote.textContent = mode === "hundred"
+      ? "※「ランダム100問」では章の選択は使われず、修了試験A-1〜B-4の各章から最低10問ずつ出題されます。"
+      : "※「模擬試験100問」では章の選択は使われず、出題傾向に合わせて全章から配分されます。";
+  }
 }
 document.querySelectorAll('input[name="mode"]').forEach(r =>
   r.addEventListener("change", updateRangeAvailability)
@@ -393,6 +509,7 @@ function startQuiz(config) {
     remainingSec: config.remainingSec !== undefined ? config.remainingSec : config.timeLimitSec,
     elapsedSec: config.elapsedSec !== undefined ? config.elapsedSec : 0,
     index: config.index !== undefined ? config.index : 0,
+    viewIndex: config.index !== undefined ? config.index : 0,
     selected: null,
     answered: false,
     records: config.records !== undefined ? config.records : [],
@@ -467,24 +584,40 @@ function renderDotTrack() {
   q.questions.forEach((_, i) => {
     const dot = document.createElement("span");
     dot.className = "dot";
-    if (i === q.index) dot.classList.add("is-current");
+    if (i === q.viewIndex) dot.classList.add("is-current");
     const record = q.records[i];
     if (record) dot.classList.add(record.isCorrect ? "is-correct" : "is-incorrect");
     el.dotTrack.appendChild(dot);
   });
 }
 
+function isBatchMode(mode) {
+  return mode === "hundred" || mode === "mock";
+}
+
 function renderQuestion() {
   const q = state.quiz;
-  const item = q.questions[q.index];
+  const vi = q.viewIndex;
+  const item = q.questions[vi];
+  const record = q.records[vi];
+  const isCurrent = vi === q.index;
+  const isAnswering = isCurrent && !record;
 
-  q.selected = null;
-  q.answered = false;
+  if (isAnswering) {
+    q.selected = null;
+    q.answered = false;
+  }
 
-  el.progressLabel.textContent = "問 " + (q.index + 1) + "/" + q.questions.length;
+  el.progressLabel.textContent = "問 " + (vi + 1) + "/" + q.questions.length;
   renderDotTrack();
   el.quizChapterTag.textContent = item.chapter;
   el.questionText.textContent = item.question;
+  el.reviewingNote.hidden = isAnswering;
+  if (!isAnswering) {
+    el.reviewingNote.textContent = isBatchMode(q.mode)
+      ? "回答済みの問題を表示中（正解は結果画面で表示されます）"
+      : "回答済みの問題を表示中";
+  }
 
   if (item.questionImage) {
     el.questionImageBox.hidden = false;
@@ -509,21 +642,77 @@ function renderQuestion() {
     div.dataset.index = i;
     div.innerHTML = '<span class="choice-marker">' + choiceLabel(i) + '</span><span></span>';
     div.querySelector("span:last-child").textContent = choiceText;
-    div.addEventListener("click", () => onSelectChoice(i));
+    if (isAnswering) div.addEventListener("click", () => onSelectChoice(i));
     el.choiceList.appendChild(div);
   });
 
   el.feedbackBox.hidden = true;
   el.feedbackBox.className = "feedback-box";
-  el.submitBtn.hidden = false;
-  el.submitBtn.disabled = true;
-  el.submitBtn.textContent = q.mode === "hundred" ? "次へ" : "回答する";
-  el.nextBtn.hidden = true;
+
+  if (isAnswering) {
+    el.submitBtn.hidden = false;
+    el.submitBtn.disabled = true;
+    el.submitBtn.textContent = isBatchMode(q.mode) ? "次へ" : "回答する";
+    el.nextBtn.hidden = true;
+  } else if (record) {
+    // 回答済みの問題（読み取り専用表示）
+    applyAnsweredView(item, record, !isBatchMode(q.mode));
+    el.submitBtn.hidden = true;
+    if (isCurrent) {
+      // 1問1答で回答直後（まだ進んでいない）状態の復元
+      el.nextBtn.hidden = false;
+      el.nextBtn.textContent = (q.index === q.questions.length - 1) ? "結果を見る" : "次の問題へ";
+    } else {
+      el.nextBtn.hidden = true;
+    }
+  }
+
+  updateNavButtons();
 }
+
+/* 回答済み問題の表示を適用する。reveal=true なら正解・解説も表示（1問1答） */
+function applyAnsweredView(item, record, reveal) {
+  [...el.choiceList.children].forEach(node => {
+    const idx = Number(node.dataset.index);
+    node.classList.add("is-disabled");
+    if (idx === record.selected) node.classList.add("is-selected");
+    if (reveal) {
+      if (idx === item.answer) node.classList.add("is-correct");
+      else if (idx === record.selected) node.classList.add("is-incorrect");
+    }
+  });
+  if (reveal) {
+    el.feedbackBox.hidden = false;
+    el.feedbackBox.classList.add(record.isCorrect ? "is-correct" : "is-incorrect");
+    el.feedbackResult.textContent = record.isCorrect ? "○ 正解！" : "✕ 不正解";
+    el.feedbackExplanation.textContent = record.explanation || "（解説はありません）";
+  }
+}
+
+/* 前の問題／次の問題へのナビゲーション */
+function updateNavButtons() {
+  const q = state.quiz;
+  el.prevBtn.hidden = q.viewIndex === 0;
+  el.fwdBtn.hidden = q.viewIndex >= q.index;
+}
+
+el.prevBtn.addEventListener("click", () => {
+  const q = state.quiz;
+  if (!q || q.viewIndex === 0) return;
+  q.viewIndex -= 1;
+  renderQuestion();
+});
+
+el.fwdBtn.addEventListener("click", () => {
+  const q = state.quiz;
+  if (!q || q.viewIndex >= q.index) return;
+  q.viewIndex += 1;
+  renderQuestion();
+});
 
 function onSelectChoice(i) {
   const q = state.quiz;
-  if (q.answered) return;
+  if (q.answered || q.viewIndex !== q.index || q.records[q.index]) return;
   q.selected = i;
   [...el.choiceList.children].forEach(node => {
     node.classList.toggle("is-selected", Number(node.dataset.index) === i);
@@ -533,9 +722,9 @@ function onSelectChoice(i) {
 
 el.submitBtn.addEventListener("click", () => {
   const q = state.quiz;
-  if (q.selected === null) return;
+  if (q.selected === null || q.viewIndex !== q.index) return;
 
-  if (q.mode === "hundred") {
+  if (isBatchMode(q.mode)) {
     recordAnswer(false);
     advanceOrFinish();
   } else {
@@ -566,16 +755,7 @@ function recordAnswer(showFeedback) {
   saveQuizProgress(); // 回答のたびに途中経過を自動保存
 
   if (showFeedback) {
-    [...el.choiceList.children].forEach(node => {
-      const idx = Number(node.dataset.index);
-      node.classList.add("is-disabled");
-      if (idx === item.answer) node.classList.add("is-correct");
-      else if (idx === q.selected) node.classList.add("is-incorrect");
-    });
-    el.feedbackBox.hidden = false;
-    el.feedbackBox.classList.add(isCorrect ? "is-correct" : "is-incorrect");
-    el.feedbackResult.textContent = isCorrect ? "○ 正解！" : "✕ 不正解";
-    el.feedbackExplanation.textContent = item.explanation || "（解説はありません）";
+    applyAnsweredView(item, q.records[q.index], true);
     el.submitBtn.hidden = true;
     el.nextBtn.hidden = false;
     el.nextBtn.textContent = (q.index === q.questions.length - 1) ? "結果を見る" : "次の問題へ";
@@ -587,6 +767,7 @@ function advanceOrFinish() {
   const q = state.quiz;
   if (q.index < q.questions.length - 1) {
     q.index += 1;
+    q.viewIndex = q.index;
     saveQuizProgress();
     renderQuestion();
   } else {
@@ -638,7 +819,7 @@ function finishQuiz(timeUp) {
   const percent = Math.round((correct / total) * 1000) / 10;
   const timeSpentSec = q.timeMode === "limited" ? (q.timeLimitSec - q.remainingSec) : q.elapsedSec;
 
-  const modeLabel = q.mode === "hundred" ? "ランダム100問" : "1問1答";
+  const modeLabel = modeLabelOf(q.mode);
 
   const entry = {
     date: new Date().toISOString(),
@@ -724,24 +905,20 @@ el.retryBtn.addEventListener("click", () => {
   const prev = state.quiz;
   if (!prev) { showScreen("home"); return; }
 
-  let pool;
-  if (prev.mode === "hundred") {
-    pool = getHundredPool();
-  } else {
-    const rangeValue = prev.rangeLabel;
-    pool = rangeValue === "すべての範囲"
-      ? state.allQuestions
-      : state.allQuestions.filter(q => q.chapter === rangeValue);
-  }
-
-  if (pool.length === 0) { showScreen("home"); return; }
-
   let questionSet;
   if (prev.mode === "hundred") {
-    const n = Math.min(100, pool.length);
-    questionSet = shuffle(pool).slice(0, n);
+    if (getHundredPool().length === 0) { showScreen("home"); return; }
+    questionSet = buildHundredSet();
+  } else if (prev.mode === "mock") {
+    if (state.allQuestions.length === 0) { showScreen("home"); return; }
+    questionSet = buildMockSet();
   } else {
-    questionSet = shuffle(pool);
+    const rangeValue = prev.rangeLabel;
+    const pool = rangeValue === "すべての範囲"
+      ? state.allQuestions
+      : state.allQuestions.filter(q => q.chapter === rangeValue);
+    if (pool.length === 0) { showScreen("home"); return; }
+    questionSet = pool.slice(); // CSVの並び順
   }
 
   startQuiz({

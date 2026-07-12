@@ -79,12 +79,17 @@
           <label class="radio-tile">
             <input type="radio" name="mode" value="single" checked>
             <span class="radio-tile-title">1問1答</span>
-            <span class="radio-tile-desc">回答するたびに正解・不正解と解説をすぐ表示</span>
+            <span class="radio-tile-desc">CSVの並び順に出題。回答するたびに正解・不正解と解説をすぐ表示</span>
           </label>
           <label class="radio-tile">
             <input type="radio" name="mode" value="hundred">
             <span class="radio-tile-title">ランダム100問</span>
-            <span class="radio-tile-desc">修了試験A-1〜B-4から出題。全問回答後にまとめて採点・解説を表示</span>
+            <span class="radio-tile-desc">修了試験A-1〜B-4の各章から最低10問ずつ出題。前問参照の問題はセットで出題。全問回答後にまとめて採点</span>
+          </label>
+          <label class="radio-tile">
+            <input type="radio" name="mode" value="mock">
+            <span class="radio-tile-title">模擬試験100問</span>
+            <span class="radio-tile-desc">出題傾向を加味して全章から100問を配分（例題を厚めに）。全問回答後にまとめて採点</span>
           </label>
         </div>
       </div>
@@ -136,6 +141,7 @@
           <button id="resumeQuizBtn" class="btn btn-primary">再開する</button>
         </div>
         <p id="quizChapterTag" class="chapter-tag">応用数学</p>
+        <p id="reviewingNote" class="reviewing-note" hidden>回答済みの問題を表示中</p>
         <div id="questionImageBox" class="question-image-box" hidden></div>
         <h2 id="questionText" class="question-text"></h2>
         <div id="choiceList" class="choice-list"></div>
@@ -143,6 +149,11 @@
         <div id="feedbackBox" class="feedback-box" hidden>
           <p id="feedbackResult" class="feedback-result"></p>
           <p id="feedbackExplanation" class="feedback-explanation"></p>
+        </div>
+
+        <div class="quiz-nav">
+          <button id="prevBtn" class="btn btn-ghost btn-small" hidden>← 前の問題を見る</button>
+          <button id="fwdBtn" class="btn btn-ghost btn-small" hidden>次の問題へ戻る →</button>
         </div>
 
         <div class="quiz-actions">

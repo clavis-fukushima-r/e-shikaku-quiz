@@ -508,6 +508,27 @@ body {
 .quiz-actions { margin-top: 18px; display: flex; }
 .quiz-actions .btn { width: 100%; }
 
+.quiz-nav {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.quiz-nav .btn { flex: none; }
+.quiz-nav #fwdBtn { margin-left: auto; }
+
+.reviewing-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--surface-alt);
+  border: 1px dashed var(--border);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
 /* ===================== RESULT SCREEN ===================== */
 .result-summary { text-align: center; }
 .result-score-big { font-size: 44px; font-weight: 800; margin: 6px 0 0; }
