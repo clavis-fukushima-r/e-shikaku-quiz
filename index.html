@@ -46,6 +46,18 @@
         </div>
       </div>
 
+      <div class="card resume-card" id="resumeCard" hidden>
+        <div class="card-head">
+          <span class="step-dot">▶</span>
+          <h2>保存された演習</h2>
+        </div>
+        <p id="resumeMeta" class="card-desc"></p>
+        <div class="action-row">
+          <button id="resumeBtn" class="btn btn-primary">つづきから再開する</button>
+          <button id="discardSaveBtn" class="btn btn-ghost btn-danger-ghost">破棄する</button>
+        </div>
+      </div>
+
       <div class="card" id="setupCard" hidden>
         <div class="card-head">
           <span class="step-dot">02</span>
@@ -55,6 +67,7 @@
         <select id="rangeSelect" class="select">
           <option value="__ALL__">すべての範囲</option>
         </select>
+        <p id="rangeNote" class="range-note" hidden>※「ランダム100問」では章の選択は使われず、修了試験A-1〜B-4から出題されます。</p>
       </div>
 
       <div class="card" id="modeCard" hidden>
@@ -71,7 +84,7 @@
           <label class="radio-tile">
             <input type="radio" name="mode" value="hundred">
             <span class="radio-tile-title">ランダム100問</span>
-            <span class="radio-tile-desc">全問回答後にまとめて採点・解説を表示</span>
+            <span class="radio-tile-desc">修了試験A-1〜B-4から出題。全問回答後にまとめて採点・解説を表示</span>
           </label>
         </div>
       </div>
@@ -112,10 +125,16 @@
         </div>
         <div class="timer-box">
           <span id="timerLabel" class="timer-label mono">90:00</span>
+          <button id="pauseBtn" class="pause-btn" title="タイマーを一時停止">⏸</button>
         </div>
       </div>
 
       <div class="card quiz-card">
+        <div id="pauseOverlay" class="pause-overlay" hidden>
+          <p class="pause-overlay-title">⏸ 一時停止中</p>
+          <p class="pause-overlay-desc">タイマーは止まっています。問題は再開するまで非表示になります。</p>
+          <button id="resumeQuizBtn" class="btn btn-primary">再開する</button>
+        </div>
         <p id="quizChapterTag" class="chapter-tag">応用数学</p>
         <div id="questionImageBox" class="question-image-box" hidden></div>
         <h2 id="questionText" class="question-text"></h2>

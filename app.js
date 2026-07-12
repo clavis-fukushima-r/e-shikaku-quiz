@@ -11,6 +11,15 @@ const state = {
 
 const HISTORY_KEY = "eShikaku_history_v1";
 const BEST_KEY = "eShikaku_best_v1";
+const SAVE_KEY = "eShikaku_save_v1";
+
+/* ランダム100問の出題対象（修了試験A-1〜B-4） */
+const HUNDRED_CHAPTER_RE = /^修了試験[AB]-[1-4]$/;
+const HUNDRED_RANGE_LABEL = "修了試験A-1〜B-4";
+
+function getHundredPool() {
+  return state.allQuestions.filter(q => HUNDRED_CHAPTER_RE.test(q.chapter));
+}
 
 /* CSVパーサ（parseCSV / questionsFromCSVText）は csv-lib.js で定義 */
 
@@ -45,6 +54,43 @@ function resetBest() {
   localStorage.removeItem(BEST_KEY);
 }
 
+/* ---- 途中セーブ ---- */
+function getSavedQuiz() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (!s || !Array.isArray(s.questions) || s.questions.length === 0) return null;
+    return s;
+  } catch { return null; }
+}
+function saveQuizProgress() {
+  const q = state.quiz;
+  if (!q || q.finished) return;
+  const data = {
+    savedAt: new Date().toISOString(),
+    questions: q.questions,
+    mode: q.mode,
+    rangeLabel: q.rangeLabel,
+    timeMode: q.timeMode,
+    timeLimitSec: q.timeLimitSec,
+    remainingSec: q.remainingSec,
+    elapsedSec: q.elapsedSec,
+    index: q.index,
+    records: q.records,
+  };
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn("途中経過の保存に失敗しました:", e);
+  }
+}
+function clearSavedQuiz() {
+  localStorage.removeItem(SAVE_KEY);
+}
+// タブを閉じる・アプリを切り替える際にも途中経過を保存（スマホ対策）
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveQuizProgress();
+});
+
 /* =========================================================
    DOM参照
    ========================================================= */
@@ -58,6 +104,11 @@ const el = {
   timeCard: document.getElementById("timeCard"),
   startRow: document.getElementById("startRow"),
   rangeSelect: document.getElementById("rangeSelect"),
+  rangeNote: document.getElementById("rangeNote"),
+  resumeCard: document.getElementById("resumeCard"),
+  resumeMeta: document.getElementById("resumeMeta"),
+  resumeBtn: document.getElementById("resumeBtn"),
+  discardSaveBtn: document.getElementById("discardSaveBtn"),
   timeLimitInput: document.getElementById("timeLimitInput"),
   startBtn: document.getElementById("startBtn"),
   historyBtn: document.getElementById("historyBtn"),
@@ -73,6 +124,9 @@ const el = {
   progressLabel: document.getElementById("progressLabel"),
   dotTrack: document.getElementById("dotTrack"),
   timerLabel: document.getElementById("timerLabel"),
+  pauseBtn: document.getElementById("pauseBtn"),
+  pauseOverlay: document.getElementById("pauseOverlay"),
+  resumeQuizBtn: document.getElementById("resumeQuizBtn"),
   quizChapterTag: document.getElementById("quizChapterTag"),
   questionImageBox: document.getElementById("questionImageBox"),
   questionText: document.getElementById("questionText"),
@@ -105,8 +159,59 @@ function showScreen(name) {
   Object.entries(el.screens).forEach(([key, node]) => {
     node.classList.toggle("active", key === name);
   });
+  if (name === "home") renderResumeCard();
   window.scrollTo(0, 0);
 }
+
+/* =========================================================
+   ホーム画面：途中セーブの再開
+   ========================================================= */
+function renderResumeCard() {
+  const s = getSavedQuiz();
+  if (!s) {
+    el.resumeCard.hidden = true;
+    return;
+  }
+  const answered = s.records.filter(Boolean).length;
+  const modeLabel = s.mode === "hundred" ? "ランダム100問" : "1問1答";
+  const timeLabel = s.timeMode === "limited"
+    ? "残り " + formatTime(s.remainingSec)
+    : "経過 " + formatTime(s.elapsedSec);
+  el.resumeMeta.textContent =
+    modeLabel + " / " + s.rangeLabel + " ／ " +
+    answered + "/" + s.questions.length + "問回答済み ／ " + timeLabel +
+    "（" + formatDate(s.savedAt) + " 保存）";
+  el.resumeCard.hidden = false;
+}
+
+el.resumeBtn.addEventListener("click", () => {
+  const s = getSavedQuiz();
+  if (!s) {
+    renderResumeCard();
+    return;
+  }
+  let index = s.index;
+  // 現在の問題が回答済みなら次の問題から再開する
+  if (s.records[index] && index < s.questions.length - 1) index += 1;
+  startQuiz({
+    questions: s.questions,
+    mode: s.mode,
+    rangeLabel: s.rangeLabel,
+    timeMode: s.timeMode,
+    timeLimitSec: s.timeLimitSec,
+    remainingSec: s.remainingSec,
+    elapsedSec: s.elapsedSec,
+    index: index,
+    records: s.records,
+  });
+});
+
+el.discardSaveBtn.addEventListener("click", () => {
+  if (confirm("保存された途中経過を破棄しますか？この操作は元に戻せません。")) {
+    clearSavedQuiz();
+    renderResumeCard();
+  }
+});
 
 /* =========================================================
    ホーム画面：CSV読み込み
@@ -214,13 +319,31 @@ el.startBtn.addEventListener("click", () => {
   const timeMode = document.querySelector('input[name="timeMode"]:checked').value;
   const timeLimitMin = Math.max(1, parseInt(el.timeLimitInput.value, 10) || 90);
 
-  let pool = rangeValue === "__ALL__"
-    ? state.allQuestions
-    : state.allQuestions.filter(q => q.chapter === rangeValue);
+  let pool;
+  let rangeLabel;
+  if (mode === "hundred") {
+    // ランダム100問は修了試験A-1〜B-4のみを対象とする
+    pool = getHundredPool();
+    rangeLabel = HUNDRED_RANGE_LABEL;
+  } else {
+    pool = rangeValue === "__ALL__"
+      ? state.allQuestions
+      : state.allQuestions.filter(q => q.chapter === rangeValue);
+    rangeLabel = rangeValue === "__ALL__" ? "すべての範囲" : rangeValue;
+  }
 
   if (pool.length === 0) {
-    alert("この範囲には問題がありません。");
+    alert(mode === "hundred"
+      ? "修了試験A-1〜B-4の問題が見つかりません。CSVのchapter列をご確認ください。"
+      : "この範囲には問題がありません。");
     return;
+  }
+
+  if (getSavedQuiz()) {
+    if (!confirm("保存された途中経過があります。新しく開始すると破棄されますが、よろしいですか？")) {
+      return;
+    }
+    clearSavedQuiz();
   }
 
   let questionSet;
@@ -234,11 +357,23 @@ el.startBtn.addEventListener("click", () => {
   startQuiz({
     questions: questionSet,
     mode: mode,
-    rangeLabel: rangeValue === "__ALL__" ? "すべての範囲" : rangeValue,
+    rangeLabel: rangeLabel,
     timeMode: timeMode,
     timeLimitSec: timeLimitMin * 60,
   });
 });
+
+/* 回答形式の切替：ランダム100問のときは章選択を無効化して注意書きを表示 */
+function updateRangeAvailability() {
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const isHundred = mode === "hundred";
+  el.rangeSelect.disabled = isHundred;
+  el.rangeNote.hidden = !isHundred;
+}
+document.querySelectorAll('input[name="mode"]').forEach(r =>
+  r.addEventListener("change", updateRangeAvailability)
+);
+updateRangeAvailability();
 
 el.historyBtn.addEventListener("click", () => {
   renderHistoryScreen();
@@ -255,15 +390,17 @@ function startQuiz(config) {
     rangeLabel: config.rangeLabel,
     timeMode: config.timeMode,
     timeLimitSec: config.timeLimitSec,
-    remainingSec: config.timeLimitSec,
-    elapsedSec: 0,
-    index: 0,
+    remainingSec: config.remainingSec !== undefined ? config.remainingSec : config.timeLimitSec,
+    elapsedSec: config.elapsedSec !== undefined ? config.elapsedSec : 0,
+    index: config.index !== undefined ? config.index : 0,
     selected: null,
     answered: false,
-    records: [],
+    records: config.records !== undefined ? config.records : [],
     timerId: null,
     finished: false,
+    paused: false,
   };
+  setPaused(false);
   el.submitBtn.hidden = false;
   el.nextBtn.hidden = true;
   showScreen("quiz");
@@ -276,6 +413,7 @@ function startTimer() {
   clearInterval(q.timerId);
   updateTimerLabel();
   q.timerId = setInterval(() => {
+    if (q.paused) return; // 一時停止中はカウントしない
     if (q.timeMode === "limited") {
       q.remainingSec -= 1;
       if (q.remainingSec <= 0) {
@@ -290,6 +428,25 @@ function startTimer() {
     updateTimerLabel();
   }, 1000);
 }
+
+/* ---- タイマーの一時停止 ---- */
+function setPaused(paused) {
+  const q = state.quiz;
+  if (q) q.paused = paused;
+  el.pauseOverlay.hidden = !paused;
+  el.pauseBtn.textContent = paused ? "▶" : "⏸";
+  el.pauseBtn.title = paused ? "再開する" : "タイマーを一時停止";
+}
+
+el.pauseBtn.addEventListener("click", () => {
+  const q = state.quiz;
+  if (!q || q.finished) return;
+  const next = !q.paused;
+  setPaused(next);
+  if (next) saveQuizProgress(); // 一時停止時に途中経過を保存
+});
+
+el.resumeQuizBtn.addEventListener("click", () => setPaused(false));
 
 function updateTimerLabel() {
   const q = state.quiz;
@@ -406,6 +563,7 @@ function recordAnswer(showFeedback) {
     explanation: item.explanation,
   };
   q.answered = true;
+  saveQuizProgress(); // 回答のたびに途中経過を自動保存
 
   if (showFeedback) {
     [...el.choiceList.children].forEach(node => {
@@ -429,6 +587,7 @@ function advanceOrFinish() {
   const q = state.quiz;
   if (q.index < q.questions.length - 1) {
     q.index += 1;
+    saveQuizProgress();
     renderQuestion();
   } else {
     finishQuiz(false);
@@ -436,8 +595,10 @@ function advanceOrFinish() {
 }
 
 el.quitBtn.addEventListener("click", () => {
-  if (confirm("演習を中断してホームに戻りますか？（この回の記録は保存されません）")) {
+  if (confirm("演習を中断してホームに戻りますか？（途中経過は保存され、ホームの「保存された演習」から再開できます）")) {
+    saveQuizProgress();
     stopTimer();
+    setPaused(false);
     state.quiz = null;
     showScreen("home");
   }
@@ -454,6 +615,8 @@ function finishQuiz(timeUp) {
   const q = state.quiz;
   stopTimer();
   q.finished = true;
+  setPaused(false);
+  clearSavedQuiz(); // 完了したので途中セーブは消去
 
   q.questions.forEach((item, i) => {
     if (!q.records[i]) {
@@ -560,10 +723,18 @@ el.backHomeBtn.addEventListener("click", () => {
 el.retryBtn.addEventListener("click", () => {
   const prev = state.quiz;
   if (!prev) { showScreen("home"); return; }
-  const rangeValue = prev.rangeLabel;
-  let pool = rangeValue === "すべての範囲"
-    ? state.allQuestions
-    : state.allQuestions.filter(q => q.chapter === rangeValue);
+
+  let pool;
+  if (prev.mode === "hundred") {
+    pool = getHundredPool();
+  } else {
+    const rangeValue = prev.rangeLabel;
+    pool = rangeValue === "すべての範囲"
+      ? state.allQuestions
+      : state.allQuestions.filter(q => q.chapter === rangeValue);
+  }
+
+  if (pool.length === 0) { showScreen("home"); return; }
 
   let questionSet;
   if (prev.mode === "hundred") {
