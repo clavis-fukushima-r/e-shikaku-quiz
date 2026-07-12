@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>E資格 対策問題演習</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ===================== ヘッダー ===================== -->
+  <header class="app-header">
+    <div class="header-net" aria-hidden="true"></div>
+    <div class="header-inner">
+      <p class="eyebrow">LOCAL PRACTICE ENGINE</p>
+      <h1>E資格 演習問題</h1>
+      <p class="header-sub">CSVを読み込んで、その場でオフライン演習</p>
+    </div>
+  </header>
+
+  <main class="app-main">
+
+    <!-- ===================== ホーム画面 ===================== -->
+    <section id="screen-home" class="screen active">
+
+      <div class="card">
+        <div class="card-head">
+          <span class="step-dot">01</span>
+          <h2>問題データ</h2>
+        </div>
+        <p class="card-desc">questions.csv を自動で読み込みます。GitHub上でこのファイルを直接編集してCommitすれば、そのまま反映されます。</p>
+
+        <p id="csvStatus" class="status-line status-neutral">読み込み中...</p>
+
+        <button id="toggleAdvancedBtn" class="btn btn-ghost btn-small">別のCSVを一時的に読み込む（上級者向け）</button>
+
+        <div id="advancedLoader" hidden>
+          <label class="file-drop" for="csvFile">
+            <input type="file" id="csvFile" accept=".csv,text/csv">
+            <span class="file-drop-label">CSVファイルを選択</span>
+            <span class="file-drop-hint">id, chapter, question, choice1-5, answer, explanation</span>
+          </label>
+          <p class="card-desc" style="margin-top:8px;">※ここで読み込んだ内容は一時的なもので、questions.csv は書き換わりません。</p>
+        </div>
+      </div>
+
+      <div class="card" id="setupCard" hidden>
+        <div class="card-head">
+          <span class="step-dot">02</span>
+          <h2>出題範囲</h2>
+        </div>
+        <label class="field-label" for="rangeSelect">章を選択（未選択なら全範囲）</label>
+        <select id="rangeSelect" class="select">
+          <option value="__ALL__">すべての範囲</option>
+        </select>
+      </div>
+
+      <div class="card" id="modeCard" hidden>
+        <div class="card-head">
+          <span class="step-dot">03</span>
+          <h2>回答形式</h2>
+        </div>
+        <div class="radio-group">
+          <label class="radio-tile">
+            <input type="radio" name="mode" value="single" checked>
+            <span class="radio-tile-title">1問1答</span>
+            <span class="radio-tile-desc">回答するたびに正解・不正解と解説をすぐ表示</span>
+          </label>
+          <label class="radio-tile">
+            <input type="radio" name="mode" value="hundred">
+            <span class="radio-tile-title">ランダム100問</span>
+            <span class="radio-tile-desc">全問回答後にまとめて採点・解説を表示</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card" id="timeCard" hidden>
+        <div class="card-head">
+          <span class="step-dot">04</span>
+          <h2>制限時間</h2>
+        </div>
+        <div class="radio-group radio-group-row">
+          <label class="radio-tile radio-tile-compact">
+            <input type="radio" name="timeMode" value="limited" checked>
+            <span class="radio-tile-title">タイマーあり</span>
+            <input type="number" id="timeLimitInput" class="mini-number" value="90" min="1" max="300"> 分
+          </label>
+          <label class="radio-tile radio-tile-compact">
+            <input type="radio" name="timeMode" value="unlimited">
+            <span class="radio-tile-title">無制限</span>
+            <span class="radio-tile-desc">経過時間のみ計測</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="action-row" id="startRow" hidden>
+        <button id="startBtn" class="btn btn-primary">演習を開始する</button>
+        <button id="historyBtn" class="btn btn-secondary">履歴・最高得点を見る</button>
+      </div>
+
+    </section>
+
+    <!-- ===================== 演習画面 ===================== -->
+    <section id="screen-quiz" class="screen">
+      <div class="quiz-topbar">
+        <button id="quitBtn" class="icon-btn" title="中断してホームへ">✕</button>
+        <div class="quiz-progress">
+          <span id="progressLabel" class="progress-label">問 1/10</span>
+          <div id="dotTrack" class="dot-track"></div>
+        </div>
+        <div class="timer-box">
+          <span id="timerLabel" class="timer-label mono">90:00</span>
+        </div>
+      </div>
+
+      <div class="card quiz-card">
+        <p id="quizChapterTag" class="chapter-tag">応用数学</p>
+        <div id="questionImageBox" class="question-image-box" hidden></div>
+        <h2 id="questionText" class="question-text"></h2>
+        <div id="choiceList" class="choice-list"></div>
+
+        <div id="feedbackBox" class="feedback-box" hidden>
+          <p id="feedbackResult" class="feedback-result"></p>
+          <p id="feedbackExplanation" class="feedback-explanation"></p>
+        </div>
+
+        <div class="quiz-actions">
+          <button id="submitBtn" class="btn btn-primary" disabled>回答する</button>
+          <button id="nextBtn" class="btn btn-primary" hidden>次の問題へ</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 結果画面 ===================== -->
+    <section id="screen-result" class="screen">
+      <div class="card result-summary">
+        <p class="eyebrow">RESULT</p>
+        <h2 id="resultScoreBig" class="result-score-big mono">0 / 0</h2>
+        <p id="resultPercent" class="result-percent mono">0%</p>
+        <div class="result-meta">
+          <span id="resultTime" class="result-meta-item">所要時間 00:00</span>
+          <span id="resultRange" class="result-meta-item">範囲: -</span>
+          <span id="resultMode" class="result-meta-item">形式: -</span>
+        </div>
+        <p id="resultBestNote" class="result-best-note"></p>
+      </div>
+
+      <div class="action-row">
+        <button id="backHomeBtn" class="btn btn-secondary">ホームに戻る</button>
+        <button id="retryBtn" class="btn btn-primary">同じ条件でもう一度</button>
+      </div>
+
+      <div class="card review-card">
+        <div class="card-head">
+          <h2>解答内容の確認</h2>
+        </div>
+        <div id="reviewList" class="review-list"></div>
+      </div>
+    </section>
+
+    <!-- ===================== 履歴画面 ===================== -->
+    <section id="screen-history" class="screen">
+      <div class="card">
+        <button id="historyBackBtn" class="icon-btn history-back" title="ホームへ戻る">← ホームへ</button>
+        <div class="card-head">
+          <span class="step-dot">★</span>
+          <h2>最高得点</h2>
+        </div>
+        <div id="bestScoreBox" class="best-score-box">
+          <p class="best-score-empty">まだ記録がありません。</p>
+        </div>
+        <button id="resetBestBtn" class="btn btn-ghost btn-small">最高得点をリセット</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>回答履歴</h2>
+        </div>
+        <div id="historyList" class="history-list">
+          <p class="best-score-empty">履歴はまだありません。</p>
+        </div>
+        <div class="action-row action-row-tight">
+          <button id="exportHistoryBtn" class="btn btn-ghost btn-small">履歴をCSVで書き出す</button>
+          <button id="clearHistoryBtn" class="btn btn-ghost btn-small btn-danger-ghost">履歴を全消去</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>すべての処理はこの端末内だけで完結します（通信は行われません）</p>
+  </footer>
+</div>
+
+<script src="csv-lib.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
