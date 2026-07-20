@@ -13,10 +13,14 @@ const HISTORY_KEY = "eShikaku_history_v1";
 const BEST_KEY = "eShikaku_best_v1";
 const SAVE_KEY = "eShikaku_save_v1";
 
-/* ランダム100問の出題対象（修了試験A-1〜B-4） */
+/* 選択肢解説で「表示を省略する」ことを表すマーカー */
+const EXPLANATION_OMITTED = "省略";
+
+/* ランダム演習の出題対象（修了試験A-1〜B-4） */
 const HUNDRED_CHAPTER_RE = /^修了試験[AB]-[1-4]$/;
 const HUNDRED_RANGE_LABEL = "修了試験A-1〜B-4";
-const HUNDRED_MIN_PER_CHAPTER = 10; // ランダム100問で各章から最低出題する問題数
+const HUNDRED_MIN_PER_CHAPTER = 10; // ランダム演習で各章から最低出題する問題数（出題数が少ない場合は自動調整）
+const DEFAULT_RANDOM_COUNT = 100;
 
 /* 前問を参照している問題の判定（この問題は直前の問題とセットで出題する） */
 const CONT_RE = /前問|前の設問|前設問|上の設問|前の問題/;
@@ -88,19 +92,27 @@ function drawGroups(groups, target, usedGroupIds, out) {
   return count;
 }
 
-/* ランダム100問：各章最低10問＋残りを全体から補充（前問参照はセットで出題） */
-function buildHundredSet() {
+/* ランダム演習：各章から均等に出題し、残りを全体から補充（前問参照はセットで出題） */
+function buildHundredSet(target) {
+  const total_target = Math.max(1, target || DEFAULT_RANDOM_COUNT);
   const pool = getHundredPool();
   const used = new Set();
   const selected = [];
   let total = 0;
   const chapters = [...new Set(pool.map(q => q.chapter))];
-  chapters.forEach(ch => {
-    const groups = toGroups(pool.filter(q => q.chapter === ch));
-    total += drawGroups(groups, HUNDRED_MIN_PER_CHAPTER, used, selected);
-  });
-  if (total < 100) {
-    drawGroups(toGroups(pool), 100 - total, used, selected);
+  // 出題数が少ない場合は各章の最低出題数を自動で縮小する
+  const minPerChapter = Math.min(
+    HUNDRED_MIN_PER_CHAPTER,
+    Math.floor(total_target / Math.max(1, chapters.length))
+  );
+  if (minPerChapter > 0) {
+    chapters.forEach(ch => {
+      const groups = toGroups(pool.filter(q => q.chapter === ch));
+      total += drawGroups(groups, minPerChapter, used, selected);
+    });
+  }
+  if (total < total_target) {
+    drawGroups(toGroups(pool), total_target - total, used, selected);
   }
   return shuffle(selected).flat();
 }
@@ -122,7 +134,7 @@ function buildMockSet() {
 }
 
 function modeLabelOf(mode) {
-  if (mode === "hundred") return "ランダム100問";
+  if (mode === "hundred") return "ランダム演習";
   if (mode === "mock") return "模擬試験100問";
   return "1問1答";
 }
@@ -182,6 +194,7 @@ function saveQuizProgress() {
     elapsedSec: q.elapsedSec,
     index: q.index,
     records: q.records,
+    randomCount: q.randomCount,
   };
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -215,6 +228,10 @@ const el = {
   resumeMeta: document.getElementById("resumeMeta"),
   resumeBtn: document.getElementById("resumeBtn"),
   discardSaveBtn: document.getElementById("discardSaveBtn"),
+  exportSaveBtn: document.getElementById("exportSaveBtn"),
+  importSaveBtn: document.getElementById("importSaveBtn"),
+  importSaveFile: document.getElementById("importSaveFile"),
+  randomCountInput: document.getElementById("randomCountInput"),
   timeLimitInput: document.getElementById("timeLimitInput"),
   startBtn: document.getElementById("startBtn"),
   historyBtn: document.getElementById("historyBtn"),
@@ -290,6 +307,8 @@ function renderResumeCard() {
     modeLabel + " / " + s.rangeLabel + " ／ " +
     answered + "/" + s.questions.length + "問回答済み ／ " + timeLabel +
     "（" + formatDate(s.savedAt) + " 保存）";
+  // CSV書き出しは1問1答モードのみ対応（ランダム系は問題セットを復元できないため）
+  el.exportSaveBtn.hidden = s.mode !== "single";
   el.resumeCard.hidden = false;
 }
 
@@ -312,6 +331,7 @@ el.resumeBtn.addEventListener("click", () => {
     elapsedSec: s.elapsedSec,
     index: index,
     records: s.records,
+    randomCount: s.randomCount,
   });
 });
 
@@ -321,6 +341,126 @@ el.discardSaveBtn.addEventListener("click", () => {
     renderResumeCard();
   }
 });
+
+/* =========================================================
+   途中セーブのCSV書き出し・読み込み（1問1答モードのみ）
+   ========================================================= */
+function downloadCSV(csvText, filename) {
+  const blob = new Blob(["\uFEFF" + csvText], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(v) {
+  return '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"';
+}
+
+el.exportSaveBtn.addEventListener("click", () => {
+  const s = getSavedQuiz();
+  if (!s) {
+    alert("保存された途中経過がありません。");
+    renderResumeCard();
+    return;
+  }
+  if (s.mode !== "single") {
+    alert("途中経過のCSV書き出しは「1問1答」モードのみ対応しています。");
+    return;
+  }
+  const lines = [["type", "key", "value"]];
+  ["savedAt", "mode", "rangeLabel", "timeMode", "timeLimitSec", "remainingSec", "elapsedSec", "index"]
+    .forEach(k => lines.push(["meta", k, s[k]]));
+  s.records.forEach((r, i) => {
+    if (r) lines.push(["record", i, r.selected === null ? "" : r.selected]);
+  });
+  const csv = lines.map(row => row.map(csvEscape).join(",")).join("\n");
+  downloadCSV(csv, "e_shikaku_save_" + Date.now() + ".csv");
+});
+
+el.importSaveBtn.addEventListener("click", () => el.importSaveFile.click());
+
+el.importSaveFile.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      importSaveCSV(String(reader.result));
+    } catch (err) {
+      alert("保存CSVの読み込みに失敗しました: " + err.message);
+    }
+    e.target.value = ""; // 同じファイルを再選択できるようにリセット
+  };
+  reader.onerror = () => { alert("ファイルの読み込みに失敗しました。"); };
+  reader.readAsText(file, "UTF-8");
+});
+
+function importSaveCSV(text) {
+  if (state.allQuestions.length === 0) {
+    alert("先に問題データ（questions.csv）を読み込んでください。");
+    return;
+  }
+  const rows = parseCSV(text.replace(/^\uFEFF/, ""));
+  const meta = {};
+  const recs = [];
+  rows.forEach((row, i) => {
+    if (i === 0) return; // ヘッダー
+    if (row[0] === "meta") meta[row[1]] = row[2];
+    else if (row[0] === "record") recs.push([parseInt(row[1], 10), row[2] === "" ? null : parseInt(row[2], 10)]);
+  });
+  if (meta.mode !== "single") {
+    alert("このCSVは途中経過の保存形式ではないか、対応していないモードです（1問1答のみ対応）。");
+    return;
+  }
+  const rangeLabel = meta.rangeLabel || "すべての範囲";
+  const pool = rangeLabel === "すべての範囲"
+    ? state.allQuestions
+    : state.allQuestions.filter(q => q.chapter === rangeLabel);
+  if (pool.length === 0) {
+    alert("範囲「" + rangeLabel + "」の問題が現在の問題データに見つかりません。");
+    return;
+  }
+
+  const records = [];
+  recs.forEach(([i, sel]) => {
+    const item = pool[i];
+    if (!item || sel === null || isNaN(i) || isNaN(sel)) return;
+    records[i] = makeRecord(item, sel);
+  });
+
+  let index = parseInt(meta.index, 10);
+  if (isNaN(index)) index = 0;
+  index = Math.max(0, Math.min(index, pool.length - 1));
+  if (records[index] && index < pool.length - 1) index += 1;
+
+  const timeLimitSec = parseInt(meta.timeLimitSec, 10);
+  const remainingSec = parseInt(meta.remainingSec, 10);
+  const elapsedSec = parseInt(meta.elapsedSec, 10);
+
+  if (getSavedQuiz()) {
+    if (!confirm("保存された途中経過があります。CSVから再開すると上書きされますが、よろしいですか？")) {
+      return;
+    }
+    clearSavedQuiz();
+  }
+
+  startQuiz({
+    questions: pool.slice(),
+    mode: "single",
+    rangeLabel: rangeLabel,
+    timeMode: meta.timeMode === "unlimited" ? "unlimited" : "limited",
+    timeLimitSec: isNaN(timeLimitSec) ? 90 * 60 : timeLimitSec,
+    remainingSec: isNaN(remainingSec) ? undefined : remainingSec,
+    elapsedSec: isNaN(elapsedSec) ? 0 : elapsedSec,
+    index: index,
+    records: records,
+  });
+}
 
 /* =========================================================
    ホーム画面：CSV読み込み
@@ -420,6 +560,29 @@ function choiceLabel(i) {
   return ["A", "B", "C", "D", "E"][i] || String(i + 1);
 }
 
+/* 選択肢解説が表示対象かどうか（空・「省略」は表示しない） */
+function choiceExplanationOf(source, i) {
+  const exps = (source && source.choiceExplanations) || [];
+  const exp = (exps[i] || "").trim();
+  if (exp === "" || exp === EXPLANATION_OMITTED) return "";
+  return exp;
+}
+
+/* 回答レコードを作成する（回答時・CSV再開時・未回答補完で共用） */
+function makeRecord(item, selected) {
+  return {
+    question: item.question,
+    chapter: item.chapter,
+    questionImage: item.questionImage,
+    choices: item.choices,
+    choiceExplanations: item.choiceExplanations || [],
+    answer: item.answer,
+    selected: selected,
+    isCorrect: selected === item.answer,
+    explanation: item.explanation,
+  };
+}
+
 /* =========================================================
    演習開始
    ========================================================= */
@@ -428,6 +591,7 @@ el.startBtn.addEventListener("click", () => {
   const mode = document.querySelector('input[name="mode"]:checked').value;
   const timeMode = document.querySelector('input[name="timeMode"]:checked').value;
   const timeLimitMin = Math.max(1, parseInt(el.timeLimitInput.value, 10) || 90);
+  const randomCount = Math.min(500, Math.max(1, parseInt(el.randomCountInput.value, 10) || DEFAULT_RANDOM_COUNT));
 
   let questionSet;
   let rangeLabel;
@@ -436,7 +600,7 @@ el.startBtn.addEventListener("click", () => {
       alert("修了試験A-1〜B-4の問題が見つかりません。CSVのchapter列をご確認ください。");
       return;
     }
-    questionSet = buildHundredSet();
+    questionSet = buildHundredSet(randomCount);
     rangeLabel = HUNDRED_RANGE_LABEL;
   } else if (mode === "mock") {
     if (state.allQuestions.length === 0) {
@@ -471,6 +635,7 @@ el.startBtn.addEventListener("click", () => {
     rangeLabel: rangeLabel,
     timeMode: timeMode,
     timeLimitSec: timeLimitMin * 60,
+    randomCount: randomCount,
   });
 });
 
@@ -482,7 +647,7 @@ function updateRangeAvailability() {
   el.rangeNote.hidden = !isBatch;
   if (isBatch) {
     el.rangeNote.textContent = mode === "hundred"
-      ? "※「ランダム100問」では章の選択は使われず、修了試験A-1〜B-4の各章から最低10問ずつ出題されます。"
+      ? "※「ランダム演習」では章の選択は使われず、修了試験A-1〜B-4の各章から均等に出題し、指定した問題数まで全体から補充します。"
       : "※「模擬試験100問」では章の選択は使われず、出題傾向に合わせて全章から配分されます。";
   }
 }
@@ -513,6 +678,7 @@ function startQuiz(config) {
     selected: null,
     answered: false,
     records: config.records !== undefined ? config.records : [],
+    randomCount: config.randomCount,
     timerId: null,
     finished: false,
     paused: false,
@@ -629,6 +795,7 @@ function renderQuestion() {
     img.onerror = () => {
       el.questionImageBox.innerHTML = '<p class="image-missing">⚠ 画像が見つかりません: ' + escapeForInnerText(item.questionImage) + '</p>';
     };
+    makeImageZoomable(img);
     el.questionImageBox.appendChild(img);
   } else {
     el.questionImageBox.hidden = true;
@@ -679,6 +846,14 @@ function applyAnsweredView(item, record, reveal) {
     if (reveal) {
       if (idx === item.answer) node.classList.add("is-correct");
       else if (idx === record.selected) node.classList.add("is-incorrect");
+      // 選択肢ごとの解説（「省略」または空の場合は表示しない）
+      const exp = choiceExplanationOf(item, idx) || choiceExplanationOf(record, idx);
+      if (exp) {
+        const p = document.createElement("p");
+        p.className = "choice-explanation " + (idx === item.answer ? "is-correct-exp" : "is-incorrect-exp");
+        p.textContent = exp;
+        node.appendChild(p);
+      }
     }
   });
   if (reveal) {
@@ -739,18 +914,8 @@ el.nextBtn.addEventListener("click", () => {
 function recordAnswer(showFeedback) {
   const q = state.quiz;
   const item = q.questions[q.index];
-  const isCorrect = q.selected === item.answer;
 
-  q.records[q.index] = {
-    question: item.question,
-    chapter: item.chapter,
-    questionImage: item.questionImage,
-    choices: item.choices,
-    answer: item.answer,
-    selected: q.selected,
-    isCorrect: isCorrect,
-    explanation: item.explanation,
-  };
+  q.records[q.index] = makeRecord(item, q.selected);
   q.answered = true;
   saveQuizProgress(); // 回答のたびに途中経過を自動保存
 
@@ -801,16 +966,7 @@ function finishQuiz(timeUp) {
 
   q.questions.forEach((item, i) => {
     if (!q.records[i]) {
-      q.records[i] = {
-        question: item.question,
-        chapter: item.chapter,
-        questionImage: item.questionImage,
-        choices: item.choices,
-        answer: item.answer,
-        selected: null,
-        isCorrect: false,
-        explanation: item.explanation,
-      };
+      q.records[i] = makeRecord(item, null);
     }
   });
 
@@ -865,6 +1021,32 @@ function finishQuiz(timeUp) {
     ap.className = "review-answers";
     ap.innerHTML = "あなたの回答: " + escapeForInnerText(selectedText) + "<br><b>正解: " + escapeForInnerText(correctText) + "</b>";
 
+    // 選択肢ごとの表示（正解・不正解の色分け＋個別解説。「省略」は解説を出さない）
+    const choicesBox = document.createElement("div");
+    choicesBox.className = "review-choices";
+    r.choices.forEach((choiceText, ci) => {
+      const line = document.createElement("div");
+      line.className = "review-choice";
+      if (ci === r.answer) line.classList.add("is-correct");
+      else if (ci === r.selected) line.classList.add("is-incorrect");
+
+      const t = document.createElement("p");
+      t.className = "review-choice-text";
+      let label = choiceLabel(ci) + ": " + choiceText;
+      if (ci === r.selected) label += "（あなたの回答）";
+      t.textContent = label;
+      line.appendChild(t);
+
+      const exp = choiceExplanationOf(r, ci);
+      if (exp) {
+        const e = document.createElement("p");
+        e.className = "review-choice-exp " + (ci === r.answer ? "is-correct-exp" : "is-incorrect-exp");
+        e.textContent = exp;
+        line.appendChild(e);
+      }
+      choicesBox.appendChild(line);
+    });
+
     const ep = document.createElement("p");
     ep.className = "review-explanation";
     ep.textContent = r.explanation || "（解説はありません）";
@@ -878,16 +1060,44 @@ function finishQuiz(timeUp) {
       img.alt = "問題の図";
       img.className = "question-image";
       img.onerror = () => { imgBox.style.display = "none"; };
+      makeImageZoomable(img);
       imgBox.appendChild(img);
       div.appendChild(imgBox);
     }
     div.appendChild(qp);
     div.appendChild(ap);
+    div.appendChild(choicesBox);
     div.appendChild(ep);
     el.reviewList.appendChild(div);
   });
 
   showScreen("result");
+}
+
+/* =========================================================
+   画像の拡大表示（ライトボックス）
+   ========================================================= */
+const imageLightbox = document.getElementById("imageLightbox");
+const imageLightboxImg = document.getElementById("imageLightboxImg");
+
+function openImageLightbox(src, alt) {
+  imageLightboxImg.src = src;
+  imageLightboxImg.alt = alt || "拡大画像";
+  imageLightbox.showModal();
+}
+
+document.getElementById("imageLightboxClose").addEventListener("click", () => imageLightbox.close());
+// 画像の外側（背景）をクリックしても閉じる
+imageLightbox.addEventListener("click", (e) => {
+  if (e.target === imageLightbox) imageLightbox.close();
+});
+imageLightbox.addEventListener("close", () => { imageLightboxImg.src = ""; });
+
+/* 問題画像にクリックで拡大する挙動を付与する */
+function makeImageZoomable(img) {
+  img.classList.add("is-zoomable");
+  img.title = "クリックで拡大表示";
+  img.addEventListener("click", () => openImageLightbox(img.src, img.alt));
 }
 
 function escapeForInnerText(str) {
@@ -908,7 +1118,7 @@ el.retryBtn.addEventListener("click", () => {
   let questionSet;
   if (prev.mode === "hundred") {
     if (getHundredPool().length === 0) { showScreen("home"); return; }
-    questionSet = buildHundredSet();
+    questionSet = buildHundredSet(prev.randomCount || DEFAULT_RANDOM_COUNT);
   } else if (prev.mode === "mock") {
     if (state.allQuestions.length === 0) { showScreen("home"); return; }
     questionSet = buildMockSet();
@@ -927,6 +1137,7 @@ el.retryBtn.addEventListener("click", () => {
     rangeLabel: prev.rangeLabel,
     timeMode: prev.timeMode,
     timeLimitSec: prev.timeLimitSec,
+    randomCount: prev.randomCount,
   });
 });
 
@@ -1011,19 +1222,11 @@ el.exportHistoryBtn.addEventListener("click", () => {
   const header = "date,mode,range,total,correct,percent,timeSpentSec,timeUp";
   const lines = history.map(h =>
     [h.date, h.mode, h.range, h.total, h.correct, h.percent, h.timeSpentSec, h.timeUp]
-      .map(v => '"' + String(v).replace(/"/g, '""') + '"')
+      .map(csvEscape)
       .join(",")
   );
   const csv = [header].concat(lines).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "e_shikaku_history_" + Date.now() + ".csv";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCSV(csv, "e_shikaku_history_" + Date.now() + ".csv");
 });
 
 /* =========================================================

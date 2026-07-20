@@ -1,0 +1,323 @@
+@startuml 深層学習_全部入り一枚図
+' 実線(青)=影響 ／ 破線(橙)=使用 ／ 大枠=グループ ／ 中枠=資料 ／ 内枠=分類
+left to right direction
+skinparam packageStyle rectangle
+skinparam defaultTextAlignment center
+skinparam ArrowFontSize 9
+skinparam rectangleFontSize 11
+legend top
+|= 記号 |= 意味 |
+| ──▶ | 影響（発展のもと） |
+| ┄┄▶ | 使用（部品・道具として） |
+endlegend
+package "テクニック・基礎知識一覧" as grp_tech #F4F4F4 {
+  package "1 確率モデルにおけるパラメータ推定" as f1 #dbe7fd {
+    package "基礎" as f1_c0 #FFFFFF {
+      rectangle "統計学 \n--\nデータのばらつきを数理的に扱う学問。\n機械学習全体の土台。" as stat #FEFEFE
+      rectangle "MSE（平均二乗誤差） \n--\n予測と正解の差の2乗平均。回帰の代表\n的な損失関数。" as mse #FEFEFE
+      rectangle "ナイーブベイズ (1960)\n--\n特徴同士の独立を仮定したベイズの定理\nベースの分類器。" as nb #FEFEFE
+    }
+    package "パラメータ推定" as f1_c1 #FFFFFF {
+      rectangle "最尤推定 (1922)\n--\n観測データの尤度を最大化してパラメー\nタを1点推定する。" as mle #FEFEFE
+      rectangle "MAP推定 (1950)\n--\n事前分布×尤度を最大化する推定。正則\n化と対応する。" as map #FEFEFE
+      rectangle "ベイズ推定 \n--\nパラメータを1点でなく確率分布として\n推定する。" as bayes #FEFEFE
+    }
+    package "情報理論" as f1_c2 #FFFFFF {
+      rectangle "自己情報量・エントロピー (1948)\n--\n情報の珍しさと、分布の平均的な不確実\n性の尺度。" as info #FEFEFE
+      rectangle "クロスエントロピー (1948)\n--\n2分布間の平均符号長。分類の損失関数\nとして使われる。" as xent #FEFEFE
+      rectangle "条件付き・結合エントロピー (1948)\n--\n条件付き分布・同時分布の不確実性の尺\n度。" as condent #FEFEFE
+      rectangle "相互情報量 (1948)\n--\n2つの変数が共有する情報量。依存の強\nさを表す。" as mi #FEFEFE
+      rectangle "KLダイバージェンス (1951)\n--\n分布間の非対称な擬距離。最尤推定はK\nL最小化と等価。" as kl #FEFEFE
+      rectangle "JSダイバージェンス (1991)\n--\nKLを対称化した距離。GANの理論解\n析に登場。" as js #FEFEFE
+    }
+  }
+  package "2 機械学習の基礎" as f2 #d9f0e1 {
+    package "機械学習の分類" as f2_c0 #FFFFFF {
+      rectangle "教師あり／なし／半教師あり／強化学習 (1959)\n--\nラベルの有無・報酬の与え方による学習\nの4分類。" as suplearn #FEFEFE
+    }
+    package "近傍法・距離" as f2_c1 #FFFFFF {
+      rectangle "k近傍法 (1951)\n--\n近いk個のデータの多数決で分類する怠\n惰学習。" as knn #FEFEFE
+      rectangle "kd-tree（kd木） (1975)\n--\n空間を再帰的に分割して近傍探索を高速\n化する木構造。" as kdtree #FEFEFE
+      rectangle "近似最近傍探索 (2000)\n--\n厳密性を犠牲にして近傍探索を高速化す\nる手法群。" as ann #FEFEFE
+      rectangle "ノルム・コサイン類似度・マハラノビス距離 (1936)\n--\nベクトル間の距離・類似度を測る各種の\n尺度。" as norm #FEFEFE
+    }
+    package "学習の課題" as f2_c2 #FFFFFF {
+      rectangle "過学習・正則化 (1970)\n--\n訓練データへの過適合と、罰則項による\nその抑制。" as overfit #FEFEFE
+      rectangle "次元の呪い (1961)\n--\n高次元ほどデータが疎になり学習が困難\nになる現象。" as curse #FEFEFE
+    }
+    package "検証集合" as f2_c3 #FFFFFF {
+      rectangle "ホールドアウト法・交差検証 (1974)\n--\nデータを分割して汎化性能を見積もる方\n法。" as cv #FEFEFE
+    }
+    package "性能指標" as f2_c4 #FFFFFF {
+      rectangle "混同行列・Precision / Recall / F値 (1955)\n--\n分類の当たり外れを集計した基本指標。" as clsmetric #FEFEFE
+      rectangle "ROC曲線・PR曲線 (1950)\n--\n閾値を変えたときの分類性能を可視化す\nる曲線。" as roc #FEFEFE
+      rectangle "決定係数 (1920)\n--\n回帰モデルの当てはまりの良さ（1に近\nいほど良い）。" as r2 #FEFEFE
+      rectangle "IoU・AP / mAP (2010)\n--\n検出枠の重なり率と、クラス平均の検出\n精度。" as ioumetric #FEFEFE
+      rectangle "BLEU・パープレキシティ・ROUGE (2002)\n--\n翻訳・言語モデル・要約の自動評価指標\n。" as nlpmetric #FEFEFE
+    }
+  }
+  package "4 深層モデルのための最適化" as f4 #fbdcd9 {
+    package "パラメータ初期化戦略" as f4_c0 #FFFFFF {
+      rectangle "Xavier（Glorot）初期化 (2010)\n--\n入出力の分散を揃える初期化。sigm\noid / tanh向け。" as xavier #FEFEFE
+      rectangle "He / Kaiming初期化 (2015)\n--\n分散2/nで初期化。ReLU向けの定\n番。" as he #FEFEFE
+    }
+    package "確率的削除" as f4_c1 #FFFFFF {
+      rectangle "ドロップアウト (2012)\n--\nノードを確率的に無効化して過学習を抑\nえる。推論時は重み調整。" as do #FEFEFE
+      rectangle "ドロップコネクト (2013)\n--\nノードでなく結合（重み）を確率的に無\n効化する。" as dc #FEFEFE
+    }
+    package "陰的正則化" as f4_c2 #FFFFFF {
+      rectangle "バッチサイズと汎化・早期終了 (1990)\n--\n小バッチの暗黙的正則化効果と、検証誤\n差での学習打ち切り。" as implicit #FEFEFE
+    }
+  }
+  package "7 汎化性能向上のためのテクニック" as f7 #fae5d0 {
+    package "データ集合の拡張" as f7_c0 #FFFFFF {
+      rectangle "データ拡張 (2012)\n--\n画像の反転・切り抜きや言語の置換でデ\nータを水増しする。" as aug #FEFEFE
+    }
+    package "正規化" as f7_c1 #FFFFFF {
+      rectangle "レイヤー／インスタンス／グループ正規化 (2016)\n--\nバッチサイズに依存しない正規化の変種\nたち。" as norms #FEFEFE
+    }
+    package "アンサンブル" as f7_c2 #FFFFFF {
+      rectangle "平均法・バギング・ブートストラップ (1996)\n--\n復元抽出データで複数モデルを作り合議\nして分散を減らす。" as ens #FEFEFE
+      rectangle "ブースティング・勾配ブースティング (1997)\n--\n前の弱学習器の誤りを重視して逐次強化\nする。" as boost #FEFEFE
+      rectangle "XGBoost (2016)\n--\n勾配ブースティングの高速・高精度な実\n装。" as xgb #FEFEFE
+      rectangle "スタッキング (1992)\n--\n複数モデルの出力を別モデル（メタ学習\n器）で統合する。" as stack #FEFEFE
+    }
+    package "ハイパーパラメータ最適化" as f7_c3 #FFFFFF {
+      rectangle "手動調整・グリッドサーチ・ランダムサーチ (2012)\n--\n総当たり・乱択による探索。ランダムの\n方が効率的とされる。" as hpo #FEFEFE
+      rectangle "ベイズ最適化（PI / EI / UCB / LCB） (2012)\n--\nガウス過程と獲得関数で次に試す点を賢\nく選ぶ。" as bayesopt #FEFEFE
+    }
+  }
+  package "12 様々な学習方法" as f12 #e8d9f5 {
+    package "転移" as f12_c0 #FFFFFF {
+      rectangle "転移学習・ファインチューニング (2014)\n--\n学習済みモデルを流用。全体を再学習す\nるかで呼び分ける。" as tl #FEFEFE
+      rectangle "ドメインシフト (2010)\n--\n訓練時と運用時でデータ分布がずれて性\n能が落ちる問題。" as domain #FEFEFE
+    }
+    package "半教師あり学習" as f12_c1 #FFFFFF {
+      rectangle "一致性正則化・疑似ラベル・エントロピー最小化 (2013)\n--\n少量ラベルとラベルなしデータを併用す\nる3アプローチ。" as semi #FEFEFE
+      rectangle "Self-Training・Co-Training (1998)\n--\n自分（or 別視点のモデル）の予測を\nラベルとして学習を拡張。" as selftrain #FEFEFE
+    }
+    package "自己教師あり学習" as f12_c2 #FFFFFF {
+      rectangle "自己教師あり学習 (2018)\n--\nラベルなしデータから疑似タスクを自作\nして事前学習する。" as ssl #FEFEFE
+      rectangle "対照学習（Contrastive Learning） (2020)\n--\n正例ペアを近づけ負例を遠ざけて表現を\n学習する。" as cl #FEFEFE
+    }
+    package "距離学習" as f12_c3 #FFFFFF {
+      rectangle "SiameseNet・Contrastive loss (2005)\n--\n同じ重みの2つのNNで、同類を近く異\n類を遠くに埋め込む。" as metric #FEFEFE
+    }
+    package "判断根拠の可視化" as f12_c4 #FFFFFF {
+      rectangle "CAM・Grad-CAM・Guided Grad-CAM (2016)\n--\nCNNがどこを見て判断したかをヒート\nマップで可視化。" as cam #FEFEFE
+      rectangle "Integrated Gradients (2017)\n--\n基準画像からの勾配の経路積分で特徴の\n寄与度を算出。" as ig #FEFEFE
+    }
+    package "モデルの近似" as f12_c5 #FFFFFF {
+      rectangle "LIME (2016)\n--\n予測の周辺を単純なモデルで局所近似し\nて説明する。" as lime #FEFEFE
+      rectangle "SHAP (2017)\n--\nゲーム理論のShapley値で各特徴\nの寄与を公平に分配。" as shap #FEFEFE
+    }
+  }
+}
+package "ニューラルネットワーク" as grp_nn #FBF6E9 {
+  package "3 順伝播型ネットワーク" as f3 #fdf3cf {
+    package "基礎" as f3_c0 #FFFFFF {
+      rectangle "順伝播型NN・万能近似定理 (1989)\n--\n多層NNは任意の連続関数を近似できる\nという理論的裏付け。" as mlp #FEFEFE
+    }
+    package "出力層と損失関数" as f3_c1 #FFFFFF {
+      rectangle "タスク別の出力層と損失関数 (1990)\n--\n回帰・2値・多クラス・マルチラベル・\n順序回帰の対応関係。" as outloss #FEFEFE
+      rectangle "Softmax関数 (1990)\n--\n出力を合計1の確率分布に変換する関数\n。" as softmax #FEFEFE
+    }
+    package "活性化関数" as f3_c2 #FFFFFF {
+      rectangle "ReLU・勾配消失問題 (2011)\n--\n負を0にする活性化関数。勾配消失を緩\n和し深層化を可能に。" as relu #FEFEFE
+    }
+    package "基本的なアルゴリズム" as f3_c3 #FFFFFF {
+      rectangle "勾配降下法・最急降下法 \n--\n全データの勾配の逆方向にパラメータを\n更新する。" as gd #FEFEFE
+      rectangle "確率的勾配降下法（SGD） (1951)\n--\nミニバッチで確率的に更新。深層学習の\n基本最適化法。" as sgd #FEFEFE
+      rectangle "Momentum・NAG (1964)\n--\n慣性項で振動を抑えて収束を加速。NA\nGは先読み版。" as mom #FEFEFE
+      rectangle "Adagrad (2011)\n--\n過去の勾配の蓄積でパラメータ毎に学習\n率を調整。" as adagrad #FEFEFE
+      rectangle "RMSprop (2012)\n--\n勾配2乗の指数移動平均で学習率の減衰\nしすぎを防ぐ。" as rmsprop #FEFEFE
+      rectangle "Adam (2014)\n--\nMomentumとRMSpropを組\nみ合わせた定番の最適化法。" as adam #FEFEFE
+    }
+    package "誤差逆伝播法" as f3_c4 #FFFFFF {
+      rectangle "誤差逆伝播法・連鎖律 (1986)\n--\n連鎖律で全層の勾配を出力側から効率的\nに計算する。" as bp #FEFEFE
+      rectangle "バッチ正規化 (2015)\n--\n層入力の分布を整えて学習を安定化・高\n速化する。" as bn #FEFEFE
+    }
+  }
+  package "5 畳み込みニューラルネットワーク" as f5 #ecdcfa {
+    package "畳み込み" as f5_c0 #FFFFFF {
+      rectangle "畳み込み層・パディング・ストライド (1998)\n--\n重み共有のフィルタで局所特徴を抽出す\nる。出力サイズ計算が頻出。" as conv #FEFEFE
+      rectangle "im2col (2014)\n--\n畳み込みを行列積に変換して高速化する\n実装テクニック。" as im2col #FEFEFE
+    }
+    package "特別な畳み込み" as f5_c1 #FFFFFF {
+      rectangle "Pointwise畳み込み（1×1） (2014)\n--\nチャネル方向のみの畳み込み。次元の圧\n縮・拡張に使う。" as pwconv #FEFEFE
+      rectangle "Depthwise / Depthwise separable畳み込み (2017)\n--\n空間方向とチャネル方向を分離して計算\n量を大幅削減。" as dwconv #FEFEFE
+    }
+    package "プーリング" as f5_c2 #FFFFFF {
+      rectangle "Max / Average / Global Average Pooling (1998)\n--\n位置ズレに強い縮約。GAPは全結合層\nの代替になる。" as pool #FEFEFE
+    }
+    package "RNN系" as f5_c3 #FFFFFF {
+      rectangle "RNN・双方向RNN (1990)\n--\n隠れ状態を再帰させて系列を処理。双方\n向は前後文脈を利用。" as rnn #FEFEFE
+      rectangle "LSTM (1997)\n--\n3つのゲートとセルで長期依存を保持し\n勾配消失を緩和。" as lstm #FEFEFE
+      rectangle "GRU (2014)\n--\nゲートを2つに簡略化した軽量版LST\nM。" as gru #FEFEFE
+    }
+  }
+  package "6 Transformer" as f6 #d2f2f2 {
+    package "系列変換" as f6_c0 #FFFFFF {
+      rectangle "Seq2Seq（エンコーダ・デコーダ） (2014)\n--\n系列を固定長ベクトルに圧縮してから系\n列に変換する枠組み。" as s2s #FEFEFE
+      rectangle "アテンション機構 (2015)\n--\n入力系列の重要箇所に重みを付けて参照\nする仕組み。" as attn #FEFEFE
+    }
+    package "Transformer" as f6_c1 #FFFFFF {
+      rectangle "Transformer (2017)\n--\nRNNを使わずAttentionのみ\nで系列を並列処理するモデル。" as tra #FEFEFE
+      rectangle "Self-Attention (2017)\n--\n同一系列内の単語同士の関係（Q・K・\nV）を計算する。" as selfattn #FEFEFE
+      rectangle "Source-Target Attention (2017)\n--\nデコーダがエンコーダ出力を参照するア\nテンション。" as stattn #FEFEFE
+    }
+  }
+}
+package "タスクごとのモデルの進化" as grp_task #EEF6F0 {
+  package "9 ResNet・画像認識モデル" as f9 #cfe9d8 {
+    package "ResNet" as f9_c0 #FFFFFF {
+      rectangle "ResNet（スキップ接続・Residual Block） (2015)\n--\n残差接続で勾配消失を防ぎ超深層（15\n2層）を実現。最重要。" as res #FEFEFE
+      rectangle "building / bottleneck building block (2015)\n--\n3×3×2構成と、1×1で圧縮するボ\nトルネック構成の残差ブロック。" as block #FEFEFE
+      rectangle "WideResNet (2016)\n--\n深さでなく幅（チャネル数）を広げて効\n率と精度を向上。" as wres #FEFEFE
+    }
+    package "Transformer系" as f9_c1 #FFFFFF {
+      rectangle "Vision Transformer（ViT） (2020)\n--\n画像をパッチ系列として扱いTrans\nformerで分類する。" as vit #FEFEFE
+      rectangle "Swin Transformer (2021)\n--\nShifted Windowで局所的\nにAttentionを計算し計算量を\n削減。" as swin #FEFEFE
+    }
+    package "物体検出の基礎" as f9_c2 #FFFFFF {
+      rectangle "バウンディングボックス・NMS (2012)\n--\n検出枠の表現（corner / xy\nwh型）と重複枠の除去処理。" as bbox #FEFEFE
+    }
+    package "R-CNN系" as f9_c3 #FFFFFF {
+      rectangle "R-CNN (2014)\n--\nSelective Searchの候\n補領域をCNNで分類する2段階検出の\n先駆け。" as rcnnf #FEFEFE
+      rectangle "Fast R-CNN（RoI Pooling・Multi-task Loss） (2015)\n--\n特徴マップを共有し、分類と回帰を同時\n学習して高速化。" as fastr #FEFEFE
+      rectangle "Faster R-CNN（RPN・Anchor Box） (2015)\n--\n領域提案までNN（RPN）で行いEn\nd-to-Endに近づけた。" as fasterr #FEFEFE
+      rectangle "Mask R-CNN（RoI Align・mask branch） (2017)\n--\n検出にマスク分岐を追加。RoI Al\nignでズレを解消。" as maskr #FEFEFE
+    }
+    package "1段階検出" as f9_c4 #FFFFFF {
+      rectangle "YOLO (2016)\n--\n検出を回帰問題として1段で解く高速検\n出器。" as yolo #FEFEFE
+      rectangle "SSD (2016)\n--\nマルチスケール特徴マップで大小の物体\nを1段で検出。" as ssd #FEFEFE
+      rectangle "FCOS（アンカーフリー・FPN・Center-ness） (2019)\n--\nAnchor Boxを使わず点ベース\nで検出する方式。" as fcos #FEFEFE
+    }
+    package "セグメンテーション" as f9_c5 #FFFFFF {
+      rectangle "セマンティック／インスタンス／パノプティック (2015)\n--\nピクセル単位のクラス分類。個体を区別\nするかで種類が分かれる。" as seg #FEFEFE
+      rectangle "FCN・転置畳み込み (2015)\n--\n全結合を畳み込みに置き換え、転置畳み\n込みで解像度を復元。" as fcn #FEFEFE
+      rectangle "U-Net (2015)\n--\nエンコーダとデコーダをスキップ結合し\nたU字型構造。" as unet #FEFEFE
+      rectangle "Dice係数 (2016)\n--\n領域の重なりを測るセグメンテーション\nの評価指標。" as dice #FEFEFE
+    }
+  }
+  package "10 自然言語処理" as f10 #f7ecc8 {
+    package "前処理・ベクトル化" as f10_c0 #FFFFFF {
+      rectangle "形態素解析・N-gram (1990)\n--\n文を単語に分割し、連続するn語の並び\nを統計的に扱う。" as prep #FEFEFE
+      rectangle "Bag of Words・LSI (1990)\n--\n語の出現頻度ベクトル化と、その次元圧\n縮（潜在意味）。" as bow #FEFEFE
+      rectangle "分布仮説・分散表現 (1954)\n--\n「意味は文脈が決める」仮説と、単語の\n密ベクトル表現。" as dist #FEFEFE
+    }
+    package "Word2Vec" as f10_c1 #FFFFFF {
+      rectangle "Word2Vec（CBOW / Skip-gram・負例サンプリング） (2013)\n--\n周辺語の予測タスクで単語を低次元ベク\nトル化する。" as w2v #FEFEFE
+    }
+    package "事前学習モデル" as f10_c2 #FFFFFF {
+      rectangle "BERT (2018)\n--\n双方向Transformerをマスク\n語予測で事前学習したモデル。" as bert #FEFEFE
+      rectangle "GPT / GPT-2 / GPT-3 (2018)\n--\n次単語予測（Next token p\nrediction）で事前学習した自\n己回帰生成モデル。" as gpt #FEFEFE
+      rectangle "Zero / Few-Shot・Prompt Based Learning (2020)\n--\n追加学習なしにプロンプト内の例示だけ\nでタスクに適応する。" as fewshot #FEFEFE
+      rectangle "基盤モデル・Scaling Laws (2020)\n--\nモデル・データ・計算量を増やすほど性\n能が上がる法則。" as found #FEFEFE
+      rectangle "RAG (2020)\n--\n外部知識を検索して生成に組み込み、知\n識不足や幻覚を補う。" as rag #FEFEFE
+    }
+    package "生成モデル" as f10_c3 #FFFFFF {
+      rectangle "識別モデルと生成モデル (2000)\n--\n境界p(y|x)を学ぶか、分布p(x\n)そのものを学ぶかの違い。" as genmodel #FEFEFE
+      rectangle "オートエンコーダ (2006)\n--\n圧縮と復元を通して特徴表現を学習する\n。" as ae #FEFEFE
+      rectangle "VAE (2013)\n--\n潜在変数を確率分布として学習する生成\nモデル。" as vae #FEFEFE
+      rectangle "GAN (2014)\n--\n生成器と識別器を敵対させて学習する生\n成モデル。" as gan #FEFEFE
+      rectangle "フローベース生成モデル (2014)\n--\n可逆変換の合成で尤度を厳密に計算でき\nる生成モデル。" as flow #FEFEFE
+      rectangle "自己回帰モデル (2016)\n--\n過去の出力を条件に次を逐次生成するモ\nデル。" as ar #FEFEFE
+      rectangle "拡散モデル (2020)\n--\nノイズを加える過程の逆（除去）を学習\nして生成する。" as diff #FEFEFE
+    }
+  }
+  package "11 深層強化学習" as f11 #f8d7d2 {
+    package "問題設定" as f11_c0 #FFFFFF {
+      rectangle "多腕バンディット問題 (1952)\n--\n探索と活用のトレードオフを扱う最も単\n純な設定。" as bandit #FEFEFE
+      rectangle "マルコフ決定過程 (1957)\n--\n状態・行動・報酬・遷移で強化学習を定\n式化する枠組み。" as mdp #FEFEFE
+      rectangle "収益・状態価値・行動価値 (1957)\n--\n将来の割引報酬和と、その状態・行動ご\nとの期待値。" as value #FEFEFE
+    }
+    package "学習法" as f11_c1 #FFFFFF {
+      rectangle "モンテカルロ法 (1950)\n--\nエピソード終了後の実収益から価値を推\n定する。" as mc #FEFEFE
+      rectangle "TD学習 (1988)\n--\n1歩先の推定値との差（TD誤差）で逐\n次更新する。" as td #FEFEFE
+      rectangle "Q学習 (1989)\n--\n方策オフ型で行動価値Qを学習する代表\n的手法。" as ql #FEFEFE
+      rectangle "SARSA (1994)\n--\n実際に取った行動で更新する方策オン型\nのQ学習。" as sarsa #FEFEFE
+      rectangle "価値ベース・方策ベース (2000)\n--\n価値関数経由で方策を得るか、方策を直\n接最適化するか。" as policy #FEFEFE
+    }
+    package "DQN" as f11_c2 #FFFFFF {
+      rectangle "DQN (2015)\n--\nQ関数をCNNで近似した深層強化学習\nの先駆け。" as dqn #FEFEFE
+      rectangle "Experience Replay・Target固定・報酬クリッピング・Huber関数 (2015)\n--\nDQNの学習を安定化させる4つの工夫\n。" as dqntech #FEFEFE
+    }
+    package "方策勾配" as f11_c3 #FFFFFF {
+      rectangle "方策勾配法・方策勾配定理 (2000)\n--\n方策のパラメータを期待収益の勾配で直\n接更新する。" as pg #FEFEFE
+      rectangle "Actor-Critic・A3C (2016)\n--\n方策（Actor）と価値（Criti\nc）を併用。A3Cは非同期並列版。" as ac #FEFEFE
+    }
+  }
+}
+mle -[#2b57c9]-> map : 事前分布を加えて拡張
+map -[#2b57c9]-> bayes : 点推定から分布の推定へ
+info -[#2b57c9]-> xent : エントロピー概念の応用
+mle -[#2b57c9]-> xent : 最尤推定がCE最小化と等価
+gd -[#2b57c9]-> sgd : ミニバッチで確率的に
+sgd -[#2b57c9]-> mom : 慣性項を追加
+sgd -[#2b57c9]-> adagrad : 学習率を適応化
+adagrad -[#2b57c9]-> rmsprop : 蓄積を指数移動平均に
+rmsprop -[#2b57c9]-> adam : Momentumと統合
+mom -[#2b57c9]-> adam : RMSpropと統合
+adam -[#d98c00].> tra : 学習のオプティマイザとして使用
+bp -[#d98c00].> mlp : 全層の勾配計算に使用
+mlp -[#2b57c9]-> conv : 画像向けに局所結合・重み共有
+mlp -[#2b57c9]-> rnn : 系列向けに再帰構造を導入
+rnn -[#2b57c9]-> lstm : 勾配消失対策にゲートを追加
+lstm -[#2b57c9]-> gru : ゲートを2つに簡略化
+lstm -[#d98c00].> s2s : エンコーダ／デコーダの中身として使用
+s2s -[#2b57c9]-> attn : 固定長ベクトルの限界を解消
+attn -[#2b57c9]-> tra : RNNを捨てAttentionのみに
+selfattn -[#d98c00].> tra : エンコーダ・デコーダ内部で使用
+stattn -[#d98c00].> tra : デコーダがエンコーダ参照に使用
+tra -[#2b57c9]-> bert : エンコーダ部分を発展
+tra -[#2b57c9]-> gpt : デコーダ部分を発展
+tra -[#2b57c9]-> vit : 画像分野へ応用
+vit -[#2b57c9]-> swin : Shifted Windowで計算量を改善
+res -[#2b57c9]-> tra : 残差接続がAdd & Normに採用
+w2v -[#2b57c9]-> bert : 分散表現の考え方が発展
+dist -[#2b57c9]-> w2v : 分布仮説を実装
+bow -[#2b57c9]-> dist : カウントベースの限界から推論ベースへ
+gpt -[#2b57c9]-> fewshot : 大規模化で可能になった
+gpt -[#2b57c9]-> found : スケール則の実証例
+gpt -[#d98c00].> rag : 生成器として使用し検索で知識補強
+ae -[#2b57c9]-> vae : 潜在変数を確率分布化
+ar -[#d98c00].> gpt : 自己回帰の枠組みを言語に適用
+gan -[#2b57c9]-> diff : 生成品質の競争相手として発展を促進
+vae -[#2b57c9]-> diff : 潜在変数モデルの発展形
+conv -[#2b57c9]-> res : 深層化の壁をスキップ接続で突破
+res -[#d98c00].> block : 残差ブロックとして構成
+res -[#2b57c9]-> wres : 深さより幅へ
+bn -[#d98c00].> res : 各畳み込み層の学習安定化に使用
+xavier -[#2b57c9]-> he : ReLU向けに分散を修正
+pwconv -[#2b57c9]-> dwconv : 組み合わせてseparable化
+conv -[#d98c00].> rcnnf : 特徴抽出のバックボーンとして使用
+rcnnf -[#2b57c9]-> fastr : 特徴マップ共有で高速化
+fastr -[#2b57c9]-> fasterr : 領域提案をRPNでNN化
+fasterr -[#2b57c9]-> maskr : マスク分岐を追加
+fasterr -[#2b57c9]-> yolo : 2段階→1段階へ高速化
+yolo -[#2b57c9]-> ssd : マルチスケール化
+fasterr -[#2b57c9]-> fcos : アンカーフリー化
+bbox -[#d98c00].> yolo : NMSで重複枠を除去
+bbox -[#d98c00].> rcnnf : 検出枠の表現として使用
+fcn -[#2b57c9]-> unet : スキップ結合を追加
+maskr -[#d98c00].> seg : インスタンス分割を実現
+dice -[#d98c00].> seg : 評価指標として使用
+mc -[#2b57c9]-> td : エピソード完了待ちから逐次更新へ
+td -[#2b57c9]-> ql : 方策オフ型の行動価値学習へ
+td -[#2b57c9]-> sarsa : 方策オン型の行動価値学習へ
+bandit -[#2b57c9]-> mdp : 状態遷移を加えて一般化
+mdp -[#d98c00].> ql : 問題設定の前提として使用
+value -[#d98c00].> ql : 更新対象の関数として使用
+ql -[#2b57c9]-> dqn : Q関数をCNNで近似して深層化
+conv -[#d98c00].> dqn : Q関数の近似器として使用
+dqntech -[#d98c00].> dqn : 学習の安定化に使用
+pg -[#2b57c9]-> ac : 価値関数（Critic）を併用
+dqn -[#2b57c9]-> ac : 深層強化学習の発展形
+ssl -[#2b57c9]-> cl : 代表的な手法として発展
+metric -[#2b57c9]-> cl : Contrastive lossの考え方が源流
+semi -[#d98c00].> selftrain : 疑似ラベルの実装として使用
+boost -[#2b57c9]-> xgb : 高速・高精度な実装
+ens -[#2b57c9]-> stack : 合議から階層統合へ
+hpo -[#2b57c9]-> bayesopt : 乱択から確率モデルによる探索へ
+@enduml

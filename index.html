@@ -34,13 +34,17 @@
 
         <p id="csvStatus" class="status-line status-neutral">読み込み中...</p>
 
-        <button id="toggleAdvancedBtn" class="btn btn-ghost btn-small">別のCSVを一時的に読み込む（上級者向け）</button>
+        <div class="action-row action-row-tight">
+          <button id="toggleAdvancedBtn" class="btn btn-ghost btn-small">別のCSVを一時的に読み込む（上級者向け）</button>
+          <button id="importSaveBtn" class="btn btn-ghost btn-small">保存CSVから再開</button>
+          <input type="file" id="importSaveFile" accept=".csv,text/csv" hidden>
+        </div>
 
         <div id="advancedLoader" hidden>
           <label class="file-drop" for="csvFile">
             <input type="file" id="csvFile" accept=".csv,text/csv">
             <span class="file-drop-label">CSVファイルを選択</span>
-            <span class="file-drop-hint">id, chapter, question, choice1-5, answer, explanation</span>
+            <span class="file-drop-hint">id, chapter, question, choice1-5, choice1-5_explanation, answer, explanation</span>
           </label>
           <p class="card-desc" style="margin-top:8px;">※ここで読み込んだ内容は一時的なもので、questions.csv は書き換わりません。</p>
         </div>
@@ -54,8 +58,10 @@
         <p id="resumeMeta" class="card-desc"></p>
         <div class="action-row">
           <button id="resumeBtn" class="btn btn-primary">つづきから再開する</button>
+          <button id="exportSaveBtn" class="btn btn-ghost btn-small">CSVで書き出す</button>
           <button id="discardSaveBtn" class="btn btn-ghost btn-danger-ghost">破棄する</button>
         </div>
+        <p class="card-desc" style="margin:10px 0 0;">※CSV書き出しは「1問1答」の途中経過のみ対応。書き出したCSVは「保存CSVから再開」で読み込めます（端末の履歴消去やスマホ⇔PCの引き継ぎに）。</p>
       </div>
 
       <div class="card" id="setupCard" hidden>
@@ -67,7 +73,7 @@
         <select id="rangeSelect" class="select">
           <option value="__ALL__">すべての範囲</option>
         </select>
-        <p id="rangeNote" class="range-note" hidden>※「ランダム100問」では章の選択は使われず、修了試験A-1〜B-4から出題されます。</p>
+        <p id="rangeNote" class="range-note" hidden>※「ランダム演習」では章の選択は使われず、修了試験A-1〜B-4から出題されます。</p>
       </div>
 
       <div class="card" id="modeCard" hidden>
@@ -79,12 +85,13 @@
           <label class="radio-tile">
             <input type="radio" name="mode" value="single" checked>
             <span class="radio-tile-title">1問1答</span>
-            <span class="radio-tile-desc">CSVの並び順に出題。回答するたびに正解・不正解と解説をすぐ表示</span>
+            <span class="radio-tile-desc">CSVの並び順に出題。回答するたびに正解・不正解と選択肢ごとの解説をすぐ表示</span>
           </label>
           <label class="radio-tile">
             <input type="radio" name="mode" value="hundred">
-            <span class="radio-tile-title">ランダム100問</span>
-            <span class="radio-tile-desc">修了試験A-1〜B-4の各章から最低10問ずつ出題。前問参照の問題はセットで出題。全問回答後にまとめて採点</span>
+            <span class="radio-tile-title">ランダム演習</span>
+            <span class="radio-tile-desc">修了試験A-1〜B-4の各章から均等に出題。前問参照の問題はセットで出題。全問回答後にまとめて採点</span>
+            <span class="radio-tile-desc">出題数：<input type="number" id="randomCountInput" class="mini-number" value="100" min="10" max="500"> 問</span>
           </label>
           <label class="radio-tile">
             <input type="radio" name="mode" value="mock">
@@ -224,6 +231,12 @@
     <p>すべての処理はこの端末内だけで完結します（通信は行われません）</p>
   </footer>
 </div>
+
+<!-- 画像の拡大表示ダイアログ -->
+<dialog id="imageLightbox" class="image-lightbox">
+  <button id="imageLightboxClose" class="image-lightbox-close" title="閉じる（Escでも閉じます）">✕</button>
+  <img id="imageLightboxImg" class="image-lightbox-img" alt="拡大画像">
+</dialog>
 
 <script src="csv-lib.js"></script>
 <script src="app.js"></script>
