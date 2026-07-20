@@ -34,20 +34,6 @@
 
         <p id="csvStatus" class="status-line status-neutral">読み込み中...</p>
 
-        <div class="action-row action-row-tight">
-          <button id="toggleAdvancedBtn" class="btn btn-ghost btn-small">別のCSVを一時的に読み込む（上級者向け）</button>
-          <button id="importSaveBtn" class="btn btn-ghost btn-small">保存CSVから再開</button>
-          <input type="file" id="importSaveFile" accept=".csv,text/csv" hidden>
-        </div>
-
-        <div id="advancedLoader" hidden>
-          <label class="file-drop" for="csvFile">
-            <input type="file" id="csvFile" accept=".csv,text/csv">
-            <span class="file-drop-label">CSVファイルを選択</span>
-            <span class="file-drop-hint">id, chapter, question, choice1-8, choice1-8_explanation, answer, explanation</span>
-          </label>
-          <p class="card-desc" style="margin-top:8px;">※ここで読み込んだ内容は一時的なもので、questions.csv は書き換わりません。</p>
-        </div>
       </div>
 
       <div class="card resume-card" id="resumeCard" hidden>
@@ -58,10 +44,8 @@
         <p id="resumeMeta" class="card-desc"></p>
         <div class="action-row">
           <button id="resumeBtn" class="btn btn-primary">つづきから再開する</button>
-          <button id="exportSaveBtn" class="btn btn-ghost btn-small">CSVで書き出す</button>
           <button id="discardSaveBtn" class="btn btn-ghost btn-danger-ghost">破棄する</button>
         </div>
-        <p class="card-desc" style="margin:10px 0 0;">※CSV書き出しは「1問1答」の途中経過のみ対応。書き出したCSVは「保存CSVから再開」で読み込めます（端末の履歴消去やスマホ⇔PCの引き継ぎに）。</p>
       </div>
 
       <div class="card" id="syncCard">
@@ -75,7 +59,7 @@
         </div>
         <div id="syncSetupBox" hidden>
           <p class="card-desc">
-            GitHubのアクセストークンを貼り付けると、途中経過が自動で非公開Gistに保存され、他の端末からも「保存された演習」として再開できるようになります。
+            GitHubのアクセストークンを貼り付けると、途中経過と最高得点が自動で非公開Gistに保存され、他の端末からも引き継げるようになります。
           </p>
           <details class="sync-help">
             <summary>トークンの発行手順（初回のみ・2分）</summary>

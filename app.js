@@ -164,12 +164,14 @@ function saveBestIfHigher(entry) {
   const best = getBest();
   if (!best || entry.percent > best.percent) {
     localStorage.setItem(BEST_KEY, JSON.stringify(entry));
+    pushCloudBest(); // Gist連携時はクラウドにも反映
     return true;
   }
   return false;
 }
 function resetBest() {
   localStorage.removeItem(BEST_KEY);
+  pushCloudBest(); // クラウド側の最高得点も消す（連携時のみ）
 }
 
 /* ---- 途中セーブ ---- */
@@ -220,10 +222,7 @@ document.addEventListener("visibilitychange", () => {
    DOM参照
    ========================================================= */
 const el = {
-  csvFile: document.getElementById("csvFile"),
   csvStatus: document.getElementById("csvStatus"),
-  toggleAdvancedBtn: document.getElementById("toggleAdvancedBtn"),
-  advancedLoader: document.getElementById("advancedLoader"),
   setupCard: document.getElementById("setupCard"),
   modeCard: document.getElementById("modeCard"),
   timeCard: document.getElementById("timeCard"),
@@ -234,9 +233,6 @@ const el = {
   resumeMeta: document.getElementById("resumeMeta"),
   resumeBtn: document.getElementById("resumeBtn"),
   discardSaveBtn: document.getElementById("discardSaveBtn"),
-  exportSaveBtn: document.getElementById("exportSaveBtn"),
-  importSaveBtn: document.getElementById("importSaveBtn"),
-  importSaveFile: document.getElementById("importSaveFile"),
   randomCountInput: document.getElementById("randomCountInput"),
   timeLimitInput: document.getElementById("timeLimitInput"),
   startBtn: document.getElementById("startBtn"),
@@ -308,6 +304,7 @@ function showScreen(name) {
 const GIST_TOKEN_KEY = "eShikaku_gistToken_v1";
 const GIST_ID_KEY = "eShikaku_gistId_v1";
 const GIST_FILENAME = "e-shikaku-save.json";
+const GIST_BEST_FILENAME = "e-shikaku-best.json";
 const GIST_DESC = "E資格演習アプリの途中経過セーブ（自動生成）";
 const GIST_PUSH_DEBOUNCE_MS = 4000;
 
@@ -393,6 +390,21 @@ async function pushCloudSave(useKeepalive) {
   }
 }
 
+/* 最高得点をクラウドへ送信（更新・リセット時） */
+async function pushCloudBest() {
+  if (!gistConfigured()) return;
+  const content = localStorage.getItem(BEST_KEY) || "{}";
+  try {
+    const id = await findOrCreateGist();
+    await gistFetch("https://api.github.com/gists/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ files: { [GIST_BEST_FILENAME]: { content: content } } }),
+    });
+  } catch (err) {
+    setSyncStatus("同期エラー: " + err.message, "status-error");
+  }
+}
+
 /* クラウドのセーブを取得し、新しければローカルに取り込む（起動時・連携時） */
 async function pullCloudSave() {
   if (!gistConfigured()) return;
@@ -421,6 +433,21 @@ async function pullCloudSave() {
     } else {
       setSyncStatus("☁ 同期済み" + (cloudValid ? "（" + formatDate(cloud.savedAt) + " 保存）" : "（クラウドにセーブはありません）"), "status-ok");
     }
+
+    // 最高得点の同期（正答率が高い方を採用）
+    const bestFile = gist.files && gist.files[GIST_BEST_FILENAME];
+    let cloudBest = null;
+    if (bestFile) {
+      try { cloudBest = JSON.parse(bestFile.content); } catch (e) { /* 無視 */ }
+    }
+    const cloudBestValid = cloudBest && typeof cloudBest.percent === "number";
+    const localBest = getBest();
+    if (cloudBestValid && (!localBest || cloudBest.percent > localBest.percent)) {
+      localStorage.setItem(BEST_KEY, JSON.stringify(cloudBest));
+    } else if (localBest && (!cloudBestValid || localBest.percent > cloudBest.percent)) {
+      pushCloudBest();
+    }
+
     renderResumeCard();
   } catch (err) {
     setSyncStatus("同期エラー: " + err.message, "status-error");
@@ -487,8 +514,6 @@ function renderResumeCard() {
     modeLabel + " / " + s.rangeLabel + " ／ " +
     answered + "/" + s.questions.length + "問回答済み ／ " + timeLabel +
     "（" + formatDate(s.savedAt) + " 保存）";
-  // CSV書き出しは1問1答モードのみ対応（ランダム系は問題セットを復元できないため）
-  el.exportSaveBtn.hidden = s.mode !== "single";
   el.resumeCard.hidden = false;
 }
 
@@ -523,7 +548,7 @@ el.discardSaveBtn.addEventListener("click", () => {
 });
 
 /* =========================================================
-   途中セーブのCSV書き出し・読み込み（1問1答モードのみ）
+   CSVダウンロード用ヘルパー（履歴書き出しで使用）
    ========================================================= */
 function downloadCSV(csvText, filename) {
   const blob = new Blob(["\uFEFF" + csvText], { type: "text/csv;charset=utf-8;" });
@@ -539,107 +564,6 @@ function downloadCSV(csvText, filename) {
 
 function csvEscape(v) {
   return '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"';
-}
-
-el.exportSaveBtn.addEventListener("click", () => {
-  const s = getSavedQuiz();
-  if (!s) {
-    alert("保存された途中経過がありません。");
-    renderResumeCard();
-    return;
-  }
-  if (s.mode !== "single") {
-    alert("途中経過のCSV書き出しは「1問1答」モードのみ対応しています。");
-    return;
-  }
-  const lines = [["type", "key", "value"]];
-  ["savedAt", "mode", "rangeLabel", "timeMode", "timeLimitSec", "remainingSec", "elapsedSec", "index"]
-    .forEach(k => lines.push(["meta", k, s[k]]));
-  s.records.forEach((r, i) => {
-    if (r) lines.push(["record", i, r.selected === null ? "" : r.selected]);
-  });
-  const csv = lines.map(row => row.map(csvEscape).join(",")).join("\n");
-  downloadCSV(csv, "e_shikaku_save_" + Date.now() + ".csv");
-});
-
-el.importSaveBtn.addEventListener("click", () => el.importSaveFile.click());
-
-el.importSaveFile.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      importSaveCSV(String(reader.result));
-    } catch (err) {
-      alert("保存CSVの読み込みに失敗しました: " + err.message);
-    }
-    e.target.value = ""; // 同じファイルを再選択できるようにリセット
-  };
-  reader.onerror = () => { alert("ファイルの読み込みに失敗しました。"); };
-  reader.readAsText(file, "UTF-8");
-});
-
-function importSaveCSV(text) {
-  if (state.allQuestions.length === 0) {
-    alert("先に問題データ（questions.csv）を読み込んでください。");
-    return;
-  }
-  const rows = parseCSV(text.replace(/^\uFEFF/, ""));
-  const meta = {};
-  const recs = [];
-  rows.forEach((row, i) => {
-    if (i === 0) return; // ヘッダー
-    if (row[0] === "meta") meta[row[1]] = row[2];
-    else if (row[0] === "record") recs.push([parseInt(row[1], 10), row[2] === "" ? null : parseInt(row[2], 10)]);
-  });
-  if (meta.mode !== "single") {
-    alert("このCSVは途中経過の保存形式ではないか、対応していないモードです（1問1答のみ対応）。");
-    return;
-  }
-  const rangeLabel = meta.rangeLabel || "すべての範囲";
-  const pool = rangeLabel === "すべての範囲"
-    ? state.allQuestions
-    : state.allQuestions.filter(q => q.chapter === rangeLabel);
-  if (pool.length === 0) {
-    alert("範囲「" + rangeLabel + "」の問題が現在の問題データに見つかりません。");
-    return;
-  }
-
-  const records = [];
-  recs.forEach(([i, sel]) => {
-    const item = pool[i];
-    if (!item || sel === null || isNaN(i) || isNaN(sel)) return;
-    records[i] = makeRecord(item, sel);
-  });
-
-  let index = parseInt(meta.index, 10);
-  if (isNaN(index)) index = 0;
-  index = Math.max(0, Math.min(index, pool.length - 1));
-  if (records[index] && index < pool.length - 1) index += 1;
-
-  const timeLimitSec = parseInt(meta.timeLimitSec, 10);
-  const remainingSec = parseInt(meta.remainingSec, 10);
-  const elapsedSec = parseInt(meta.elapsedSec, 10);
-
-  if (getSavedQuiz()) {
-    if (!confirm("保存された途中経過があります。CSVから再開すると上書きされますが、よろしいですか？")) {
-      return;
-    }
-    clearSavedQuiz();
-  }
-
-  startQuiz({
-    questions: pool.slice(),
-    mode: "single",
-    rangeLabel: rangeLabel,
-    timeMode: meta.timeMode === "unlimited" ? "unlimited" : "limited",
-    timeLimitSec: isNaN(timeLimitSec) ? 90 * 60 : timeLimitSec,
-    remainingSec: isNaN(remainingSec) ? undefined : remainingSec,
-    elapsedSec: isNaN(elapsedSec) ? 0 : elapsedSec,
-    index: index,
-    records: records,
-  });
 }
 
 /* =========================================================
@@ -677,34 +601,6 @@ function applyLoadedQuestions(questions, sourceLabel) {
   el.timeCard.hidden = false;
   el.startRow.hidden = false;
 }
-
-el.csvFile.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const questions = questionsFromCSVText(reader.result);
-      applyLoadedQuestions(questions, file.name);
-    } catch (err) {
-      el.csvStatus.textContent = "読み込みエラー: " + err.message;
-      el.csvStatus.className = "status-line status-error";
-    }
-  };
-  reader.onerror = () => {
-    el.csvStatus.textContent = "ファイルの読み込みに失敗しました。";
-    el.csvStatus.className = "status-line status-error";
-  };
-  reader.readAsText(file, "UTF-8");
-});
-
-el.toggleAdvancedBtn.addEventListener("click", () => {
-  const willShow = el.advancedLoader.hidden;
-  el.advancedLoader.hidden = !willShow;
-  el.toggleAdvancedBtn.textContent = willShow
-    ? "別のCSVを一時的に読み込む（上級者向け）を閉じる"
-    : "別のCSVを一時的に読み込む（上級者向け）";
-});
 
 async function autoLoadQuestionsData() {
   try {
