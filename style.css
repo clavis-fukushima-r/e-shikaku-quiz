@@ -659,3 +659,40 @@ body {
   z-index: 1;
 }
 .image-lightbox-close:hover { background: var(--surface-alt); }
+
+/* =========================================================
+   Gist同期
+   ========================================================= */
+.token-input {
+  width: 100%;
+  padding: 10px 12px;
+  margin: 10px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.token-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.sync-help {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.sync-help summary {
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+.sync-help-list {
+  margin: 8px 0 4px;
+  padding-left: 20px;
+  line-height: 1.7;
+}
+.sync-help a {
+  color: var(--accent);
+}

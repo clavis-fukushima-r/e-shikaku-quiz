@@ -42,7 +42,7 @@ function parseCSV(text) {
 
 /**
  * CSVテキストを問題オブジェクトの配列に変換する。
- * 新形式では choiceN_explanation 列（選択肢ごとの解説）に対応。
+ * 新形式では choiceN_explanation 列（選択肢ごとの解説）と choice6〜8 に対応。
  * 列が無い旧形式CSVもそのまま読み込める（選択肢解説は空になる）。
  * 戻り値の配列には非表示プロパティ skippedRows（読み飛ばした行番号の配列）が付与される。
  */
@@ -61,11 +61,17 @@ function questionsFromCSVText(text) {
     c3: header.indexOf("choice3"),
     c4: header.indexOf("choice4"),
     c5: header.indexOf("choice5"),
+    c6: header.indexOf("choice6"),
+    c7: header.indexOf("choice7"),
+    c8: header.indexOf("choice8"),
     e1: header.indexOf("choice1_explanation"),
     e2: header.indexOf("choice2_explanation"),
     e3: header.indexOf("choice3_explanation"),
     e4: header.indexOf("choice4_explanation"),
     e5: header.indexOf("choice5_explanation"),
+    e6: header.indexOf("choice6_explanation"),
+    e7: header.indexOf("choice7_explanation"),
+    e8: header.indexOf("choice8_explanation"),
     answer: header.indexOf("answer"),
     explanation: header.indexOf("explanation"),
   };
@@ -89,6 +95,7 @@ function questionsFromCSVText(text) {
     // 選択肢と選択肢解説をペアで取り出し、空の選択肢は解説ごと除外して整合を保つ
     const pairs = [
       [idx.c1, idx.e1], [idx.c2, idx.e2], [idx.c3, idx.e3], [idx.c4, idx.e4], [idx.c5, idx.e5],
+      [idx.c6, idx.e6], [idx.c7, idx.e7], [idx.c8, idx.e8],
     ].map(([ci, ei]) => [cell(ci), cell(ei)])
       .filter(([c]) => c !== "");
     const choices = pairs.map(p => p[0]);

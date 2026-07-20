@@ -198,16 +198,22 @@ function saveQuizProgress() {
   };
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    scheduleCloudPush(); // Gist連携時はクラウドにも反映（数秒まとめて送信）
   } catch (e) {
     console.warn("途中経過の保存に失敗しました:", e);
   }
 }
 function clearSavedQuiz() {
   localStorage.removeItem(SAVE_KEY);
+  // Gist連携時はクラウドのセーブも空にする
+  if (gistConfigured()) { cloudDirty = true; pushCloudSave(); }
 }
 // タブを閉じる・アプリを切り替える際にも途中経過を保存（スマホ対策）
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") saveQuizProgress();
+  if (document.visibilityState === "hidden") {
+    saveQuizProgress();
+    if (cloudDirty) pushCloudSave(true); // タブを離れる前に未送信分を送る
+  }
 });
 
 /* =========================================================
@@ -235,6 +241,13 @@ const el = {
   timeLimitInput: document.getElementById("timeLimitInput"),
   startBtn: document.getElementById("startBtn"),
   historyBtn: document.getElementById("historyBtn"),
+
+  syncStatus: document.getElementById("syncStatus"),
+  syncSetupToggleBtn: document.getElementById("syncSetupToggleBtn"),
+  syncSetupBox: document.getElementById("syncSetupBox"),
+  gistTokenInput: document.getElementById("gistTokenInput"),
+  gistConnectBtn: document.getElementById("gistConnectBtn"),
+  gistDisconnectBtn: document.getElementById("gistDisconnectBtn"),
 
   screens: {
     home: document.getElementById("screen-home"),
@@ -288,6 +301,173 @@ function showScreen(name) {
   if (name === "home") renderResumeCard();
   window.scrollTo(0, 0);
 }
+
+/* =========================================================
+   GitHub Gist 同期（スマホ⇔PCのセーブ共有）
+   ========================================================= */
+const GIST_TOKEN_KEY = "eShikaku_gistToken_v1";
+const GIST_ID_KEY = "eShikaku_gistId_v1";
+const GIST_FILENAME = "e-shikaku-save.json";
+const GIST_DESC = "E資格演習アプリの途中経過セーブ（自動生成）";
+const GIST_PUSH_DEBOUNCE_MS = 4000;
+
+let gistPushTimer = null;
+let cloudDirty = false; // クラウド未送信の変更があるか
+
+function getGistToken() { return localStorage.getItem(GIST_TOKEN_KEY) || ""; }
+function gistConfigured() { return getGistToken() !== ""; }
+
+function setSyncStatus(text, cls) {
+  el.syncStatus.textContent = text;
+  el.syncStatus.className = "status-line " + (cls || "status-neutral");
+}
+
+async function gistFetch(url, options, keepalive) {
+  const res = await fetch(url, Object.assign({
+    headers: {
+      "Authorization": "Bearer " + getGistToken(),
+      "Accept": "application/vnd.github+json",
+      "Content-Type": "application/json",
+    },
+    keepalive: !!keepalive,
+  }, options));
+  if (!res.ok) {
+    let msg = "HTTP " + res.status;
+    if (res.status === 401) msg = "トークンが無効です。発行し直して貼り付けてください（401）";
+    else if (res.status === 403) msg = "権限が不足しています。トークンに「gist」スコープが必要です（403）";
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+/* 同期用Gistを探し、無ければ作成してIDを返す（別端末で作成済みならそれを使う） */
+async function findOrCreateGist() {
+  const cached = localStorage.getItem(GIST_ID_KEY);
+  if (cached) return cached;
+  const list = await gistFetch("https://api.github.com/gists?per_page=100");
+  const found = list.find(g => g.files && g.files[GIST_FILENAME]);
+  let id;
+  if (found) {
+    id = found.id;
+  } else {
+    const created = await gistFetch("https://api.github.com/gists", {
+      method: "POST",
+      body: JSON.stringify({
+        description: GIST_DESC,
+        public: false,
+        files: { [GIST_FILENAME]: { content: "{}" } },
+      }),
+    });
+    id = created.id;
+  }
+  localStorage.setItem(GIST_ID_KEY, id);
+  return id;
+}
+
+/* ローカルのセーブをクラウドへ送信（デバウンス付き） */
+function scheduleCloudPush() {
+  if (!gistConfigured()) return;
+  cloudDirty = true;
+  clearTimeout(gistPushTimer);
+  gistPushTimer = setTimeout(() => pushCloudSave(), GIST_PUSH_DEBOUNCE_MS);
+}
+
+async function pushCloudSave(useKeepalive) {
+  if (!gistConfigured()) return;
+  clearTimeout(gistPushTimer);
+  const content = localStorage.getItem(SAVE_KEY) || "{}";
+  // keepalive付きfetchは本文64KB制限があるため、大きい場合は通常送信にフォールバック
+  const keepalive = !!useKeepalive && content.length < 60000;
+  try {
+    const id = await findOrCreateGist();
+    await gistFetch("https://api.github.com/gists/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: content } } }),
+    }, keepalive);
+    cloudDirty = false;
+    setSyncStatus("☁ 同期済み（" + formatDate(new Date().toISOString()) + "）", "status-ok");
+  } catch (err) {
+    // Gistが削除されていた場合はIDキャッシュを破棄し、次回作り直す
+    if (String(err.message).indexOf("404") !== -1) localStorage.removeItem(GIST_ID_KEY);
+    setSyncStatus("同期エラー: " + err.message, "status-error");
+  }
+}
+
+/* クラウドのセーブを取得し、新しければローカルに取り込む（起動時・連携時） */
+async function pullCloudSave() {
+  if (!gistConfigured()) return;
+  setSyncStatus("☁ クラウドのセーブを確認中...", "status-neutral");
+  try {
+    const id = await findOrCreateGist();
+    const gist = await gistFetch("https://api.github.com/gists/" + id);
+    const file = gist.files && gist.files[GIST_FILENAME];
+    let text = file ? file.content : "";
+    if (file && file.truncated) {
+      // 1MB超は内容が省略されるためraw URLから取得
+      text = await (await fetch(file.raw_url)).text();
+    }
+    let cloud = null;
+    try { cloud = JSON.parse(text); } catch (e) { /* 空・不正は無視 */ }
+    const cloudValid = cloud && Array.isArray(cloud.questions) && cloud.questions.length > 0;
+    const local = getSavedQuiz();
+
+    if (cloudValid && (!local || new Date(cloud.savedAt) > new Date(local.savedAt))) {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(cloud));
+      setSyncStatus("☁ クラウドのセーブを取り込みました（" + formatDate(cloud.savedAt) + " 保存）", "status-ok");
+    } else if (local && (!cloudValid || new Date(local.savedAt) > new Date(cloud.savedAt))) {
+      // ローカルの方が新しい → クラウドへ反映
+      cloudDirty = true;
+      await pushCloudSave();
+    } else {
+      setSyncStatus("☁ 同期済み" + (cloudValid ? "（" + formatDate(cloud.savedAt) + " 保存）" : "（クラウドにセーブはありません）"), "status-ok");
+    }
+    renderResumeCard();
+  } catch (err) {
+    setSyncStatus("同期エラー: " + err.message, "status-error");
+  }
+}
+
+function updateSyncUI() {
+  const configured = gistConfigured();
+  el.gistDisconnectBtn.hidden = !configured;
+  if (configured) setSyncStatus("☁ 連携済み", "status-ok");
+  else setSyncStatus("未連携（セーブはこの端末内のみに保存されます）", "status-neutral");
+}
+
+el.syncSetupToggleBtn.addEventListener("click", () => {
+  const willShow = el.syncSetupBox.hidden;
+  el.syncSetupBox.hidden = !willShow;
+  el.syncSetupToggleBtn.textContent = willShow ? "同期の設定を閉じる" : "同期の設定を開く";
+});
+
+el.gistConnectBtn.addEventListener("click", async () => {
+  const token = el.gistTokenInput.value.trim();
+  if (!token) { alert("トークンを入力してください。"); return; }
+  localStorage.setItem(GIST_TOKEN_KEY, token);
+  localStorage.removeItem(GIST_ID_KEY);
+  setSyncStatus("☁ 接続を確認中...", "status-neutral");
+  el.gistConnectBtn.disabled = true;
+  try {
+    await findOrCreateGist();
+    el.gistTokenInput.value = "";
+    updateSyncUI();
+    await pullCloudSave(); // 別端末のセーブがあれば取り込む
+  } catch (err) {
+    localStorage.removeItem(GIST_TOKEN_KEY);
+    localStorage.removeItem(GIST_ID_KEY);
+    setSyncStatus("連携に失敗しました: " + err.message, "status-error");
+  } finally {
+    el.gistConnectBtn.disabled = false;
+  }
+});
+
+el.gistDisconnectBtn.addEventListener("click", () => {
+  if (!confirm("同期の連携を解除しますか？（この端末からトークンを削除します。Gist上のセーブとローカルのセーブはそのまま残ります）")) return;
+  localStorage.removeItem(GIST_TOKEN_KEY);
+  localStorage.removeItem(GIST_ID_KEY);
+  cloudDirty = false;
+  updateSyncUI();
+});
 
 /* =========================================================
    ホーム画面：途中セーブの再開
@@ -557,7 +737,7 @@ function formatTime(totalSec) {
   return String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
 }
 function choiceLabel(i) {
-  return ["A", "B", "C", "D", "E"][i] || String(i + 1);
+  return ["A", "B", "C", "D", "E", "F", "G", "H"][i] || String(i + 1);
 }
 
 /* 選択肢解説が表示対象かどうか（空・「省略」は表示しない） */
@@ -1234,3 +1414,5 @@ el.exportHistoryBtn.addEventListener("click", () => {
    ========================================================= */
 showScreen("home");
 autoLoadQuestionsData();
+updateSyncUI();
+pullCloudSave();

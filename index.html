@@ -44,7 +44,7 @@
           <label class="file-drop" for="csvFile">
             <input type="file" id="csvFile" accept=".csv,text/csv">
             <span class="file-drop-label">CSVファイルを選択</span>
-            <span class="file-drop-hint">id, chapter, question, choice1-5, choice1-5_explanation, answer, explanation</span>
+            <span class="file-drop-hint">id, chapter, question, choice1-8, choice1-8_explanation, answer, explanation</span>
           </label>
           <p class="card-desc" style="margin-top:8px;">※ここで読み込んだ内容は一時的なもので、questions.csv は書き換わりません。</p>
         </div>
@@ -62,6 +62,37 @@
           <button id="discardSaveBtn" class="btn btn-ghost btn-danger-ghost">破棄する</button>
         </div>
         <p class="card-desc" style="margin:10px 0 0;">※CSV書き出しは「1問1答」の途中経過のみ対応。書き出したCSVは「保存CSVから再開」で読み込めます（端末の履歴消去やスマホ⇔PCの引き継ぎに）。</p>
+      </div>
+
+      <div class="card" id="syncCard">
+        <div class="card-head">
+          <span class="step-dot">☁</span>
+          <h2>スマホ⇔PC 同期（GitHub Gist）</h2>
+        </div>
+        <p id="syncStatus" class="status-line status-neutral">未連携（セーブはこの端末内のみに保存されます）</p>
+        <div class="action-row action-row-tight">
+          <button id="syncSetupToggleBtn" class="btn btn-ghost btn-small">同期の設定を開く</button>
+        </div>
+        <div id="syncSetupBox" hidden>
+          <p class="card-desc">
+            GitHubのアクセストークンを貼り付けると、途中経過が自動で非公開Gistに保存され、他の端末からも「保存された演習」として再開できるようになります。
+          </p>
+          <details class="sync-help">
+            <summary>トークンの発行手順（初回のみ・2分）</summary>
+            <ol class="sync-help-list">
+              <li><a href="https://github.com/settings/tokens/new?scopes=gist&description=e-shikaku-sync" target="_blank" rel="noopener">このリンク</a>を開く（GitHubのトークン発行画面。「gist」権限のみ選択済み）</li>
+              <li>Expiration（有効期限）を選ぶ（No expiration なら貼り直し不要）</li>
+              <li>「Generate token」を押して、表示された ghp_ で始まる文字列をコピー</li>
+              <li>下の欄に貼り付けて「連携する」を押す。別の端末でも同じトークンを貼れば同期されます</li>
+            </ol>
+            <p class="card-desc">※必ずToken (classic) を使ってください（Fine-grained tokenはGistに対応していません）。トークンはこの端末のブラウザ内にのみ保存され、ページに埋め込まれることはありません。</p>
+          </details>
+          <input type="password" id="gistTokenInput" class="token-input" placeholder="ghp_ で始まるトークンを貼り付け" autocomplete="off">
+          <div class="action-row action-row-tight">
+            <button id="gistConnectBtn" class="btn btn-primary btn-small">連携する</button>
+            <button id="gistDisconnectBtn" class="btn btn-ghost btn-danger-ghost btn-small" hidden>連携を解除</button>
+          </div>
+        </div>
       </div>
 
       <div class="card" id="setupCard" hidden>
@@ -228,7 +259,7 @@
   </main>
 
   <footer class="app-footer">
-    <p>すべての処理はこの端末内だけで完結します（通信は行われません）</p>
+    <p>回答の処理は端末内で完結します（Gist同期を設定した場合のみ、セーブの読み書きでGitHubと通信します）</p>
   </footer>
 </div>
 
